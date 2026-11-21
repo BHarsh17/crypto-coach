@@ -3,7 +3,8 @@
   "coins": [
     { "symbol": "ETH", "name": "Ethereum", "kraken": "ETHUSD", "futures": "PF_ETHUSD", "anchor": null },
     { "symbol": "SOL", "name": "Solana",   "kraken": "SOLUSD", "futures": "PF_SOLUSD", "anchor": null },
-    { "symbol": "XRP", "name": "XRP",      "kraken": "XRPUSD", "futures": "PF_XRPUSD", "anchor": null }
+    { "symbol": "XRP", "name": "XRP",      "kraken": "XRPUSD", "futures": "PF_XRPUSD", "anchor": null },
+    { "symbol": "QNT", "name": "QNT", "kraken": "QNTUSD", "futures": "PF_QNTUSD", "anchor": null }
   ],
   "ladder": [
     { "drop": 10, "share": 25 },
