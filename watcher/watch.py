@@ -8,6 +8,7 @@ something changes. Standard library only - no installs needed.
 
 Usage:  python watcher/watch.py [--config coins.json] [--out site/signals.json]
 Env:    PREV_URL            URL of the last published signals.json (for memory between runs)
+        NO_NEWS=1           skip the news feeds (for testing)
         TELEGRAM_BOT_TOKEN  optional, for alerts
         TELEGRAM_CHAT_ID    optional, for alerts
         DEMO_OFFLINE=1      use synthetic candles (for testing without network)
@@ -24,9 +25,15 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import news  # noqa: E402
+
 SPOT = "https://api.kraken.com/0/public/OHLC"
 FUT = "https://futures.kraken.com/derivatives/api/v3"
 UA = {"User-Agent": "crypto-coach-watcher/1.0"}
+FEED_UA = {"User-Agent": "Mozilla/5.0 (compatible; crypto-coach-watcher/1.0)",
+           "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"}
+TRENDING = "https://api.coingecko.com/api/v3/search/trending"
 
 
 # ----------------------------------------------------------------- helpers
@@ -62,6 +69,8 @@ def rsi(closes, n=14):
         d = closes[i] - closes[i - 1]
         ag = (ag * (n - 1) + max(d, 0)) / n
         al = (al * (n - 1) + max(-d, 0)) / n
+    if ag == 0 and al == 0:
+        return 50.0  # no movement at all: neutral (0/0), not overbought
     if al == 0:
         return 100.0
     return 100 - 100 / (1 + ag / al)
@@ -111,13 +120,28 @@ def validate(cs, pair, interval):
         raise RuntimeError(f"{pair} {interval}m: latest candle is too old")
 
 
+def funding_per_8h(rates):
+    """rates: [(unix_ts, relative_rate), ...] oldest first.
+    Average of the last 8 periods, converted to an 8-hour rate using the actual
+    spacing between periods (Kraken has used 1h and 4h periods)."""
+    rates = sorted(rates)[-9:]
+    if len(rates) < 2:
+        return None
+    gaps = sorted((b[0] - a[0]) / 3600 for a, b in zip(rates, rates[1:]))
+    period_h = gaps[len(gaps) // 2]  # median spacing
+    if period_h <= 0:
+        return None
+    last8 = [r for _, r in rates[-8:]]
+    return sum(last8) / len(last8) * (8 / period_h)
+
+
 def futures_info(symbol):
-    """Latest open interest + average relative funding of the last 8 periods."""
+    """Latest open interest + funding rate expressed per 8 hours."""
     if not symbol:
         return None
     if os.environ.get("DEMO_OFFLINE"):
         rnd_ = random.Random(symbol)
-        return {"oi": rnd_.uniform(1e6, 5e7), "funding": rnd_.uniform(-0.00002, 0.00008)}
+        return {"oi": rnd_.uniform(1e6, 5e7), "funding": rnd_.uniform(-0.0002, 0.0003)}
     out = {"oi": None, "funding": None}
     try:
         t = get_json(f"{FUT}/tickers/{symbol}")
@@ -127,9 +151,8 @@ def futures_info(symbol):
         out["oi_error"] = str(e)[:120]
     try:
         h = get_json(f"{FUT}/historical-funding-rates", {"symbol": symbol})
-        rates = [r["relativeFundingRate"] for r in h.get("rates", [])[-8:]]
-        if rates:
-            out["funding"] = sum(rates) / len(rates)
+        rates = [(news.parse_date(r["timestamp"]), float(r["relativeFundingRate"])) for r in h.get("rates", [])]
+        out["funding"] = funding_per_8h([r for r in rates if r[0]])
     except Exception as e:  # noqa: BLE001
         out["funding_error"] = str(e)[:120]
     return out
@@ -181,11 +204,11 @@ def score_coin(coin, th, ladder, prev):
         if not oi_hist or now_ts() - oi_hist[-1][0] > 20 * 3600:
             oi_hist.append([now_ts(), fut["oi"]])
         oi_hist = oi_hist[-10:]
-    oi_growth = None
-    if len(oi_hist) >= 2 and fut and fut.get("oi"):
+    oi_growth = None  # only once there is a sample at least 6 days old
+    if fut and fut.get("oi"):
         week_ago = [o for o in oi_hist if now_ts() - o[0] >= 6 * 86400]
-        base = (week_ago[-1] if week_ago else oi_hist[0])[1]
-        oi_growth = pct(fut["oi"], base)
+        if week_ago:
+            oi_growth = pct(fut["oi"], week_ago[-1][1])
 
     # --- top-warning flags the watcher can measure (1-4)
     f_vertical = (ch7 is not None and ch7 >= th["vertical_7d_pct"]) or (ch30 is not None and ch30 >= th["vertical_30d_pct"])
@@ -193,7 +216,7 @@ def score_coin(coin, th, ladder, prev):
     f_stretched = (stretch50 is not None and stretch50 >= th["stretched_ma50_pct"]) or (stretch20 is not None and stretch20 >= th["stretched_ma20_pct"])
     f_rsi = (rsi_d is not None and rsi_d >= th["rsi_daily_hot"]) or (rsi_w is not None and rsi_w >= th["rsi_weekly_hot"])
     funding = fut.get("funding") if fut else None
-    f_leverage = (funding is not None and funding >= th["funding_hot"]) or (
+    f_leverage = (funding is not None and funding >= th["funding_hot_8h"]) or (
         oi_growth is not None and oi_growth >= th["oi_growth_7d_pct"] and (ch7 or 0) >= 15)
 
     flags = {
@@ -202,9 +225,9 @@ def score_coin(coin, th, ladder, prev):
         "rsi": {"on": bool(f_rsi), "detail": f"daily RSI {rnd(rsi_d, 0)}, weekly RSI {rnd(rsi_w, 0)}"},
         "leverage": {"on": bool(f_leverage),
                      "detail": ("no futures data" if not fut else
-                                f"funding {fmtf(funding)}, open interest 7d {fmtp(oi_growth)}")},
+                                f"funding {fmtf(funding)}/8h, open interest 7d "
+                                + (fmtp(oi_growth) if oi_growth is not None else "n/a (needs 6+ days of samples)"))},
     }
-    auto_count = sum(1 for f in flags.values() if f["on"])
 
     # --- buy / bottom signals
     near200w = ma200w is not None and price <= ma200w * (1 + th["near_200w_pct"] / 100)
@@ -224,12 +247,14 @@ def score_coin(coin, th, ladder, prev):
 
     # --- dip ladder
     anchor = coin.get("anchor")
-    p_anchor = (prev or {}).get("ladder", {}).get("anchor")
+    p_lad = (prev or {}).get("ladder") or {}
+    p_anchor = p_lad.get("anchor")
     if anchor is None:
         anchor = p_anchor or price
     reset = p_anchor is not None and abs(anchor - p_anchor) > 1e-12
-    anchor_ts = now_ts() if (reset or not prev) else prev["ladder"].get("anchor_ts", now_ts())
-    low = price if (reset or not prev) else min(prev["ladder"].get("low_since", price), price)
+    fresh = reset or not p_lad
+    anchor_ts = now_ts() if fresh else p_lad.get("anchor_ts", now_ts())
+    low = price if fresh else min(p_lad.get("low_since", price), price)
     for c in d:
         if c["t"] >= anchor_ts:
             low = min(low, c["l"])
@@ -238,7 +263,7 @@ def score_coin(coin, th, ladder, prev):
         rp = anchor * (1 - r["drop"] / 100)
         rungs.append({"n": i + 1, "drop": r["drop"], "share": r["share"], "price": rp, "hit": low <= rp})
 
-    trail = high90 * (1 - th["trailing_stop_pct"] / 100)
+    trail = high90 * (1 - th["trailing_stop_pct"] / 100)  # reference only; the app's stop uses the peak since your trim
 
     return {
         "symbol": coin["symbol"], "name": coin.get("name", coin["symbol"]),
@@ -250,7 +275,7 @@ def score_coin(coin, th, ladder, prev):
         "rsi_daily": rnd(rsi_d, 1), "rsi_weekly": rnd(rsi_w, 1),
         "high_90d": high90, "high_window": ath_window, "drawdown_pct": rnd(pct(price, ath_window)),
         "funding": funding, "open_interest": fut.get("oi") if fut else None, "oi_growth_7d": rnd(oi_growth),
-        "flags": flags, "auto_flag_count": auto_count,
+        "flags": flags, "auto_flag_count": None,  # set after the news step
         "bottoms": bottoms, "bottom_count": sum(1 for b in bottoms.values() if b["on"]),
         "ladder": {"anchor": anchor, "anchor_ts": anchor_ts, "low_since": low, "rungs": rungs},
         "trailing_stop": trail,
@@ -266,6 +291,10 @@ def fmtp(x):
 
 def fmtf(x):
     return "n/a" if x is None else f"{x * 100:.4f}%"
+
+
+FLAG_NAMES = {"vertical": "vertical move", "stretched": "stretched", "rsi": "extreme RSI",
+              "leverage": "leverage", "news": "news priced in", "fomo": "social FOMO"}
 
 
 def money(x):
@@ -285,8 +314,8 @@ def build_alerts(s, first_run):
     t = tier(s["auto_flag_count"])
     if t > al.get("tier", 0) and not first_run:
         names = [k for k, f in s["flags"].items() if f["on"]]
-        msgs.append(f"🔥 {s['symbol']} {s['auto_flag_count']}/4 measured top flags ({', '.join(names)}) at {money(s['price'])}. "
-                    f"Check the 3 judgment flags in the app — your rule may say trim.")
+        msgs.append(f"🔥 {s['symbol']} {s['auto_flag_count']}/6 top flags ({', '.join(FLAG_NAMES.get(n, n) for n in names)}) "
+                    f"at {money(s['price'])}. Open the app: your rule may say trim.")
     al["tier"] = t
     hit = [r["n"] for r in s["ladder"]["rungs"] if r["hit"]]
     old = set(al.get("rungs", []))
@@ -301,9 +330,8 @@ def build_alerts(s, first_run):
     if bc >= 2 and al.get("bottoms", 0) < 2 and not first_run:
         msgs.append(f"🧊 {s['symbol']} {bc}/3 bottom signals on — historically a strong accumulation zone.")
     al["bottoms"] = bc
-    if s["price"] <= s["trailing_stop"] and not al.get("trail") and not first_run:
-        msgs.append(f"🛑 {s['symbol']} below trailing stop {money(s['trailing_stop'])}. If you trimmed this cycle, your rule says sell the moonbag.")
-    al["trail"] = s["price"] <= s["trailing_stop"]
+    # (no trailing-stop alert here: your stop trails the peak since YOUR first trim,
+    #  which only the app knows, because trims are private to your browser)
     return msgs
 
 
@@ -340,6 +368,56 @@ def load_prev(path_or_url):
         sys.exit(f"Couldn't read previous signals ({e}). Skipping this run so the ladder memory isn't reset.")
 
 
+def fetch_news(sources):
+    """Returns ([(source, items)], [status per source])."""
+    fetched, status = [], []
+    for src in sources:
+        try:
+            if os.environ.get("DEMO_OFFLINE"):
+                data = fake_feed(src)
+            else:
+                req = urllib.request.Request(src["url"], headers=FEED_UA)
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    data = r.read()
+            items = news.parse_feed(data)
+            fetched.append((src, items))
+            status.append({"name": src["name"], "ok": True, "items": len(items)})
+        except Exception as e:  # noqa: BLE001
+            status.append({"name": src["name"], "ok": False, "error": str(e)[:120]})
+    return fetched, status
+
+
+def fetch_trending(prev):
+    """CoinGecko's top trending searches (last 24h). Falls back to the last
+    good list if it is under 6 hours old."""
+    try:
+        if os.environ.get("DEMO_OFFLINE"):
+            ids = ["quant-network", "zcash", "bonk"]
+        else:
+            data = get_json(TRENDING)
+            ids = [c["item"]["id"] for c in data.get("coins", [])]
+        return {"ids": ids, "ts": now_ts(), "ok": True}
+    except Exception as e:  # noqa: BLE001
+        if prev and prev.get("ok") is not False and now_ts() - prev.get("ts", 0) < 6 * 3600:
+            return dict(prev, note="using last list, refresh failed")
+        return {"ids": [], "ts": now_ts(), "ok": False, "error": str(e)[:120]}
+
+
+def fake_feed(src):
+    """Offline test feed: a QNT hype burst plus ordinary items."""
+    t = now_ts()
+    titles = ["Quant soars 40% after bank partnership", "QNT price prediction: could hit $300?",
+              "Quant partners with major clearing house", "Fed holds rates steady as inflation cools",
+              "Ethereum developers schedule mainnet upgrade", "Solana outage resolved after 2 hours",
+              "XRP ETF filing gets SEC response"]
+    items = "".join(
+        f"<item><title>{x}</title><link>https://example.com/{src['name']}/{i}</link>"
+        f"<pubDate>{datetime.fromtimestamp(t - i * 3600, timezone.utc).strftime('%a, %d %b %Y %H:%M:%S +0000')}</pubDate>"
+        f"<description>{x}</description></item>"
+        for i, x in enumerate(titles))
+    return f'<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>{items}</channel></rss>'.encode()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="coins.json")
@@ -349,20 +427,23 @@ def main():
 
     with open(a.config) as f:
         cfg = json.load(f)
+    th = cfg["thresholds"]
     prev = load_prev(a.prev)
     prev_coins = {c["symbol"]: c for c in (prev or {}).get("coins", [])}
     first_run = prev is None
 
-    out, alerts = [], []
+    # 1) market data + flags 1-4 + bottoms + ladder for each coin
+    out, new_coin = [], set()
     for coin in cfg["coins"]:
         try:
-            s = score_coin(coin, cfg["thresholds"], cfg["ladder"], prev_coins.get(coin["symbol"]))
-            alerts += build_alerts(s, first_run or coin["symbol"] not in prev_coins)
+            s = score_coin(coin, th, cfg["ladder"], prev_coins.get(coin["symbol"]))
             cdir = os.path.join(os.path.dirname(a.out) or ".", "candles")
             os.makedirs(cdir, exist_ok=True)
             with open(os.path.join(cdir, f"{coin['symbol']}.json"), "w") as f:
                 json.dump(s.pop("_candles"), f, separators=(",", ":"))
             out.append(s)
+            if coin["symbol"] not in prev_coins:
+                new_coin.add(coin["symbol"])
         except Exception as e:  # noqa: BLE001
             print(f"{coin['symbol']} failed: {e}", file=sys.stderr)
             keep = prev_coins.get(coin["symbol"])
@@ -371,22 +452,51 @@ def main():
                 out.append(keep)
         time.sleep(1.1)  # stay well inside Kraken's public rate limit
 
+    # 2) news + trending -> flags 5-6 (news priced in, social FOMO)
+    now = now_ts()
+    prev_news = (prev or {}).get("news") or {}
+    if os.environ.get("NO_NEWS"):
+        fetched, status = [], [{"name": "news disabled", "ok": False, "error": "NO_NEWS set"}]
+    else:
+        fetched, status = fetch_news(cfg.get("news_sources", []))
+    news_ok = any(x["ok"] for x in status)
+    trending = fetch_trending(prev_news.get("trending"))
+    state = news.update_state({k: prev_news.get(k) for k in ("items", "seen", "daily", "since") if prev_news.get(k) is not None},
+                              fetched, cfg["coins"], now)
+    cg = {c["symbol"]: c.get("coingecko") for c in cfg["coins"]}
+    for s in out:
+        if s.get("stale"):
+            continue
+        ids = trending.get("ids", [])
+        rank = (ids.index(cg[s["symbol"]]) + 1) if cg.get(s["symbol"]) in ids else None
+        m = news.coin_metrics(state, s["symbol"], now, th, rank)
+        s["news"] = m
+        s["flags"].update(news.news_flags(m, s.get("change_7d"), th, news_ok, trending.get("ok", False)))
+        s["auto_flag_count"] = sum(1 for f in s["flags"].values() if f["on"])
+
+    alerts = []
+    for s in out:
+        if not s.get("stale"):
+            alerts += build_alerts(s, first_run or s["symbol"] in new_coin)
+
     doc = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": "Kraken public API" if not os.environ.get("DEMO_OFFLINE") else "synthetic test data",
-        "thresholds": cfg["thresholds"],
+        "thresholds": th,
         "ladder": cfg["ladder"],
         "coins": out,
+        "news": dict(state, sources=status, trending=trending),
     }
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with open(a.out, "w") as f:
         json.dump(doc, f, indent=1)
-    print(f"wrote {a.out}: {len(out)} coins")
+    print(f"wrote {a.out}: {len(out)} coins, {len(state['items'])} news items, "
+          f"{sum(1 for x in status if x['ok'])}/{len(status)} feeds ok")
 
     if first_run and out:
         lines = [f"✅ Crypto Coach watcher is live. Tracking {', '.join(c['symbol'] for c in out)}."]
         for c in out:
-            lines.append(f"{c['symbol']} {money(c['price'])} · top flags {c['auto_flag_count']}/4 · bottom signals {c['bottom_count']}/3")
+            lines.append(f"{c['symbol']} {money(c['price'])} · top flags {c['auto_flag_count']}/6 · bottom signals {c['bottom_count']}/3")
         telegram("\n".join(lines))
     elif alerts:
         telegram("\n\n".join(alerts))

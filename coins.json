@@ -1,16 +1,25 @@
 {
-  "_help": "Edit this file on GitHub to add coins or change rules. 'kraken' is the Kraken spot pair, 'futures' the Kraken perpetual (leave \"\" if none). 'anchor' is the price your dip ladder measures drops from; null = use the price on the first run. Change anchor to reset the ladder.",
+  "_help": "Edit on GitHub to add coins or change rules. kraken = Kraken spot pair; futures = Kraken perpetual (\"\" if none); coingecko = CoinGecko coin id (for the trending list); keywords = words that count as a news mention (ALL-CAPS = exact case); anchor = price the dip ladder measures from (null = first-run price).",
   "coins": [
-    { "symbol": "ETH", "name": "Ethereum", "kraken": "ETHUSD", "futures": "PF_ETHUSD", "anchor": null },
-    { "symbol": "SOL", "name": "Solana",   "kraken": "SOLUSD", "futures": "PF_SOLUSD", "anchor": null },
-    { "symbol": "XRP", "name": "XRP",      "kraken": "XRPUSD", "futures": "PF_XRPUSD", "anchor": null },
-    { "symbol": "QNT", "name": "QNT", "kraken": "QNTUSD", "futures": "PF_QNTUSD", "anchor": null }
+    { "symbol": "ETH", "name": "Ethereum", "kraken": "ETHUSD", "futures": "PF_ETHUSD", "coingecko": "ethereum", "keywords": ["Ethereum", "Ether", "ETH"], "anchor": null },
+    { "symbol": "SOL", "name": "Solana",   "kraken": "SOLUSD", "futures": "PF_SOLUSD", "coingecko": "solana",   "keywords": ["Solana", "SOL"], "anchor": null },
+    { "symbol": "XRP", "name": "XRP",      "kraken": "XRPUSD", "futures": "PF_XRPUSD", "coingecko": "ripple",   "keywords": ["XRP", "Ripple", "XRPL"], "anchor": null },
+    { "symbol": "QNT", "name": "Quant",    "kraken": "QNTUSD", "futures": "PF_QNTUSD", "coingecko": "quant-network", "keywords": ["Quant", "QNT", "Overledger"], "anchor": null }
   ],
   "ladder": [
     { "drop": 10, "share": 25 },
     { "drop": 20, "share": 25 },
     { "drop": 30, "share": 25 },
     { "drop": 40, "share": 25 }
+  ],
+  "news_sources": [
+    { "name": "CoinDesk",            "url": "https://www.coindesk.com/arc/outboundfeeds/rss/" },
+    { "name": "Cointelegraph",       "url": "https://cointelegraph.com/rss" },
+    { "name": "Decrypt",             "url": "https://decrypt.co/feed" },
+    { "name": "The Block",           "url": "https://www.theblock.co/rss.xml" },
+    { "name": "CryptoSlate",         "url": "https://cryptoslate.com/feed/" },
+    { "name": "Ethereum Foundation", "url": "https://blog.ethereum.org/feed.xml", "coin": "ETH" },
+    { "name": "Solana (official)",   "url": "https://solana.com/news/sitemap-news.xml", "coin": "SOL" }
   ],
   "thresholds": {
     "vertical_7d_pct": 60,
@@ -19,8 +28,14 @@
     "stretched_ma20_pct": 35,
     "rsi_daily_hot": 85,
     "rsi_weekly_hot": 80,
-    "funding_hot": 0.00005,
+    "funding_hot_8h": 0.0005,
     "oi_growth_7d_pct": 30,
+    "news_move_7d_pct": 25,
+    "news_spike_x": 3,
+    "news_min_mentions_3d": 5,
+    "news_cold_start_mentions_3d": 8,
+    "fomo_move_7d_pct": 15,
+    "fomo_hype_3d": 3,
     "near_200w_pct": 10,
     "rsi_weekly_cold": 30,
     "capitulation_volume_x": 2.5,

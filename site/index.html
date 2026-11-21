@@ -105,6 +105,7 @@ label{font-size:12px;color:var(--muted);display:block;margin:8px 0 4px}
 .panic{position:fixed;right:18px;bottom:18px;z-index:40;background:#2a1418;border:1px solid #6a2635;color:#ffb3c1;border-radius:999px;padding:11px 16px;font:inherit;font-weight:600;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.4)}
 .foot{margin-top:26px;font-size:12px;color:var(--muted);line-height:1.5}
 .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.pill.lv{color:var(--green);border-color:#1f4a3a;background:#0f1f1a}
 pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px}
 .live{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
 .live i{width:8px;height:8px;border-radius:50%;background:#4a5470}
@@ -138,6 +139,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
     <button data-t="missions" class="on">🎯 Missions</button>
     <button data-t="reserve">💰 Dip reserve</button>
     <button data-t="journal">📓 Journal</button>
+    <button data-t="news">📰 News</button>
     <button data-t="badges">🏅 Badges</button>
     <button data-t="setup">⚙️ Setup</button>
   </nav>
@@ -157,9 +159,8 @@ const FLAG_INFO = {
   stretched:{n:"Stretched",h:"Far above its averages"},
   rsi:{n:"Extreme RSI",h:"Overbought"},
   leverage:{n:"Leverage piling in",h:"Funding / open interest"},
-  wallets:{n:"Old money moving",h:"Founder / dormant wallets",man:true},
-  news:{n:"News priced in",h:"Real catalyst, all in days",man:true},
-  fomo:{n:"Social FOMO",h:"Gainer lists, hype",man:true}
+  news:{n:"News priced in",h:"Real catalyst, all in days",ov:true},
+  fomo:{n:"Social FOMO",h:"Trending + hype headlines",ov:true}
 };
 const BOTTOM_INFO = {near_200w:"Near 200-week avg", rsi_cold:"Weekly RSI cold", capitulation:"Capitulation volume"};
 const LEVELS = [[0,"Paper Hands"],[150,"Rookie Stacker"],[400,"Ladder Climber"],[800,"Rule Follower"],[1400,"Steel Core"],[2200,"Cycle Rider"],[3200,"Diamond Discipline"]];
@@ -175,7 +176,7 @@ const BADGES = [
 ];
 
 let S = load();
-let DATA = null, IS_DEMO = false, TAB = "missions", FETCH_ERR = null;
+let DATA = null, IS_DEMO = false, TAB = "missions", FETCH_ERR = null, NEWSF = {coin:"all",tag:"all"};
 
 function blank(){return {xp:0,log:[],badges:{},streak:{last:null,count:0,best:0},startedAt:Date.now(),lastOffPlan:null,
   reserve:{total:0,alloc:{}},spent:{},coins:{},settings:{dataUrl:"signals.json",repoUrl:""},panic:null};}
@@ -204,7 +205,23 @@ function cleanCheck(){const since=S.lastOffPlan||S.startedAt;if(Date.now()-since
 function toast(t){const el=document.getElementById("toast");el.textContent=t;el.classList.add("show");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("show"),2200);}
 
 /* ---------- rules engine ---------- */
-function manualOn(sym){const m=C(sym).manual||{};const out={};for(const k of["wallets","news","fomo"]){out[k]=!!(m[k]&&Date.now()-m[k]<7*864e5);}return out;}
+const NFLAGS=Object.keys(FLAG_INFO).length;
+function ovr(sym,k){const o=(C(sym).ovr||{})[k];return o&&Date.now()-o.ts<7*864e5?o:null;}
+function flagOn(c,k){const o=ovr(c.symbol,k);if(o)return o.v;return !!(c.flags&&c.flags[k]&&c.flags[k].on);}
+function flagsOn(c){return Object.keys(FLAG_INFO).filter(k=>flagOn(c,k));}
+// Trailing stop: trails the highest price SINCE YOUR FIRST TRIM of this cycle (not an older high),
+// so it can never fire just because the coin was higher months ago.
+function trailPct(){return (DATA&&DATA.thresholds&&DATA.thresholds.trailing_stop_pct)||25;}
+function stopLevel(me,c){if(!(me.cycle.tiersDone>=1)||!me.cycle.peak)return null;
+  if(c.price>me.cycle.peak){me.cycle.peak=c.price;save();}
+  return me.cycle.peak*(1-trailPct()/100);}
+async function refreshPeaks(){if(!DATA||IS_DEMO)return;let changed=false;
+  for(const c of DATA.coins){const me=C(c.symbol);if(!(me.cycle.tiersDone>=1&&me.cycle.since))continue;
+    try{const k=await getCandles(c.symbol);const since=me.cycle.since/1000;let hi=me.cycle.peak||0;
+      for(const b of (k["1h"]||[]))if(b[0]>=since)hi=Math.max(hi,b[2]);
+      for(const b of (k["1d"]||[]))if(b[0]>=since)hi=Math.max(hi,b[2]);
+      if(hi>(me.cycle.peak||0)){me.cycle.peak=hi;changed=true;}}catch(e){}}
+  if(changed){save();render();}}
 function tierOf(n){return n<3?0:n===3?1:n<=5?2:3;}
 function coinBudget(sym){return (S.reserve.total||0)*((S.reserve.alloc[sym]||0)/100);}
 function coinAvail(sym){return coinBudget(sym)-(S.spent[sym]||0);}
@@ -213,33 +230,34 @@ function directive(c){
   const me=C(c.symbol);
   if(me.rungAnchor!==null && Math.abs(me.rungAnchor-c.ladder.anchor)>1e-9){me.rungsDone=[];}
   me.rungAnchor=c.ladder.anchor;
-  const man=manualOn(c.symbol);
-  const flagsOn=Object.keys(c.flags).filter(k=>c.flags[k].on).concat(Object.keys(man).filter(k=>man[k]));
-  const n=flagsOn.length, t=tierOf(n);
-  const why=flagsOn.map(k=>FLAG_INFO[k].n).join(", ");
+  const on=flagsOn(c);
+  const n=on.length, t=tierOf(n);
+  const why=on.map(k=>FLAG_INFO[k].n+(ovr(c.symbol,k)?" (set by you)":"")).join(", ");
   if(!IS_DEMO && ageMin()>360) return {k:"wait",title:"Rules paused",text:`The watcher hasn't published for ${Math.round(ageMin()/60)} hours, so flags could be wrong. Check the Actions tab on GitHub. Live prices still show, but no mission until fresh signals arrive.`};
   if(c.stale) return {k:"wait",title:"Data is stale",text:"The watcher couldn't refresh this coin last run. Rules paused until fresh data arrives."};
-  if(me.cycle.tiersDone>=1 && me.trade>0 && c.price<=c.trailing_stop)
-    return {k:"stop",title:"Trailing stop hit",text:`Price ${money(c.price)} is below your stop ${money(c.trailing_stop)}. Your rule: sell the moonbag, ${qty(me.trade)} ${c.symbol} from the trade bucket. Core stays.`,act:"stop",q:me.trade};
+  const stop=stopLevel(me,c);
+  if(me.cycle.tiersDone>=1 && me.trade>0 && stop && c.price<=stop)
+    return {k:"stop",title:"Trailing stop hit",text:`Price ${money(c.price)} is ${trailPct()}% or more below the peak since your first trim (${money(me.cycle.peak)}), so it's under your stop at ${money(stop)}. Your rule: sell the moonbag, ${qty(me.trade)} ${c.symbol} from the trade bucket. Core stays.`,act:"stop",q:me.trade};
   if(t>me.cycle.tiersDone && n>=3){
     const base=me.cycle.baseline||me.trade;
     const q=Math.min(me.trade,base*0.25*(t-me.cycle.tiersDone));
-    if(me.trade>0) return {k:"trim",title:`${n}/7 top flags · trim`,text:`Your rule says sell ${qty(q)} ${c.symbol} (${25*(t-me.cycle.tiersDone)}% of your trade bucket) at about ${money(c.price)}. Core is untouched.`,why:"Flags on: "+why,act:"trim",q,t};
-    return {k:"trim",title:`${n}/7 top flags`,text:`Pump warning. You have no trade bucket in ${c.symbol}, so nothing to trim. Don't chase it: no new buys while ${n} flags are on.`,why:"Flags on: "+why};
+    if(me.trade>0) return {k:"trim",title:`${n}/${NFLAGS} top flags · trim`,text:`Your rule says sell ${qty(q)} ${c.symbol} (${25*(t-me.cycle.tiersDone)}% of your trade bucket) at about ${money(c.price)}. Core is untouched.`,why:"Flags on: "+why,act:"trim",q,t};
+    return {k:"trim",title:`${n}/${NFLAGS} top flags`,text:`Pump warning. You have no trade bucket in ${c.symbol}, so nothing to trim. Don't chase it: no new buys while ${n} flags are on.`,why:"Flags on: "+why};
   }
   const hit=c.ladder.rungs.filter(r=>r.hit&&!me.rungsDone.includes(r.n));
   if(hit.length){const r=hit[0];const amt=coinBudget(c.symbol)*r.share/100;
     return {k:"buy",title:`Ladder rung ${r.n} reached`,text:amt>0?`Your rule: deploy ${money(amt)} of your ${c.symbol} dip reserve at ≤ ${money(r.price)} (≈ ${qty(amt/r.price)} ${c.symbol}).`:`Rung ${r.n} (${money(r.price)}) reached. Set your dip reserve in Setup to see the dollar amount.`,act:"buy",rung:r,amt};}
   if(c.bottom_count>=2) return {k:"zone",title:"Accumulation zone",text:`${c.bottom_count}/3 bottom signals on. Historically a strong area to be buying. Keep your core buys running and your ladder orders in place.`,why:Object.keys(c.bottoms).filter(k=>c.bottoms[k].on).map(k=>BOTTOM_INFO[k]).join(", ")};
-  if(n>0) return {k:"hold",title:`Hold · ${n}/7 flags`,text:`Below your 3-flag trim rule. Watch it, don't act. Core buys continue.`,why:"Flags on: "+why};
+  if(n>0) return {k:"hold",title:`Hold · ${n}/${NFLAGS} flags`,text:`Below your 3-flag trim rule. Watch it, don't act. Core buys continue.`,why:"Flags on: "+why};
   return {k:"hold",title:"Hold",text:"No rule triggered. Core buys continue. Doing nothing is the move today."};
 }
 
 /* ---------- render ---------- */
+function liveSpark(c){const v=(c.spark||[]).slice();if(c.live&&v.length)v[v.length-1]=c.price;return v;}
 function spark(vals,col){if(!vals||vals.length<2)return "";const mn=Math.min(...vals),mx=Math.max(...vals),w=300,h=46;
   const pts=vals.map((v,i)=>[i/(vals.length-1)*w,h-3-(v-mn)/((mx-mn)||1)*(h-6)]);
   const d=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d} L${w} ${h} L0 ${h}Z" fill="${col}" opacity=".08"/><path d="${d}" fill="none" stroke="${col}" stroke-width="1.6"/></svg>`;}
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d} L${w} ${h} L0 ${h}Z" fill="${col}" opacity=".08"/><path d="${d}" fill="none" stroke="${col}" stroke-width="1.6"/><circle cx="${pts[pts.length-1][0]-2}" cy="${pts[pts.length-1][1]}" r="2.6" fill="${col}"/></svg>`;}
 
 function renderHeader(){const L=level(),cur=LEVELS[L][0],nxt=LEVELS[L+1]?LEVELS[L+1][0]:cur+1000;
   document.getElementById("lvlName").textContent=`Lv ${L+1} · ${LEVELS[L][1]}`;
@@ -255,24 +273,25 @@ function renderHeader(){const L=level(),cur=LEVELS[L][0],nxt=LEVELS[L+1]?LEVELS[
   const mm=DATA?DATA.coins.filter(c=>LIVE.mismatch[c.symbol]).map(c=>c.symbol):[];
   if(mm.length)b+=`<div class="banner stale">⚠️ Live price for ${mm.join(", ")} disagrees with the watcher by more than 25%, so the app is ignoring the live price for rules. Check the coin's "kraken"/"ws" names in coins.json.</div>`;
   document.getElementById("banners").innerHTML=b;
-  document.getElementById("foot").innerHTML=DATA?`Data: ${esc(DATA.source||"")} · signals updated ${new Date(DATA.generated_at).toLocaleString()}${IS_DEMO?"":" ("+Math.round(ageMin())+" min ago)"} · live prices: Kraken WebSocket. These are rule-based signals, not predictions or financial advice. Flags 5–7 are your judgment calls (tap to toggle; they expire after 7 days).`:"";}
+  document.getElementById("foot").innerHTML=DATA?`Data: ${esc(DATA.source||"")} · signals updated ${new Date(DATA.generated_at).toLocaleString()}${IS_DEMO?"":" ("+Math.round(ageMin())+" min ago)"} · live prices: Kraken WebSocket. These are rule-based signals, not predictions or financial advice. All 6 flags are set automatically by the watcher. You can tap News or FOMO to override for 7 days.`:"";}
 
 function renderMissions(){
   if(!DATA){return FETCH_ERR?`<div class="card">Couldn't load signals from <span class="mono">${esc(S.settings.dataUrl)}</span> (${esc(FETCH_ERR)}). If you just set up GitHub, wait for the first watcher run to finish, then refresh.</div>`:`<div class="card">Loading signals…</div>`;}
   let h=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="muted small">One mission per coin. Do what it says, log it, earn XP.</div>
     <div class="row"><button class="b" onclick="addCoin()">＋ Add coin</button><button class="b go" onclick="doCheckIn()" ${S.streak.last===today()?"disabled":""}>✓ Daily check-in</button></div></div><div class="grid">`;
-  for(const c0 of DATA.coins){const c=eff(c0),me=C(c.symbol),d=directive(c),man=manualOn(c.symbol);
+  for(const c0 of DATA.coins){const c=eff(c0),me=C(c.symbol),d=directive(c);
     const col=(c.change_7d||0)>=0?"var(--green)":"var(--red)";
-    const nflags=Object.values(c.flags).filter(f=>f.on).length+Object.values(man).filter(Boolean).length;
+    const nflags=flagsOn(c).length;
     h+=`<div class="card"><div class="coinhead"><div><div class="sym">${esc(c.symbol)}</div><div class="nm">${esc(c.name)} · ${c.drawdown_pct!=null?pc(c.drawdown_pct)+" from 2y high":""}</div></div>
-      <div class="px"><b class="mono" id="px-${c.symbol}">${money(c.price)}</b><div class="small mono"><span class="pill" id="src-${c.symbol}">${c.live?"● live":"watcher"}</span> <span id="ch-${c.symbol}" class="${c.change_24h>=0?"up":"dn"}">${pc(c.change_24h)} 24h</span> · <span class="${c.change_7d>=0?"up":"dn"}">${pc(c.change_7d)} 7d</span></div></div></div>
-      <div style="cursor:pointer" onclick="openChart('${c.symbol}')" title="Open chart">${spark(c.spark,col)}</div>
+      <div class="px"><b class="mono" id="px-${c.symbol}">${money(c.price)}</b><div class="small mono"><span class="pill ${c.live?"lv":""}" id="src-${c.symbol}">${c.live?"● live":"watcher"}</span> <span id="ch-${c.symbol}" class="${c.change_24h>=0?"up":"dn"}">${pc(c.change_24h)} 24h</span> · <span class="${c.change_7d>=0?"up":"dn"}">${pc(c.change_7d)} 7d</span></div></div></div>
+      <div style="cursor:pointer" id="sp-${c.symbol}" onclick="openChart('${c.symbol}')" title="Open chart">${spark(liveSpark(c),col)}</div>
       <div class="mission m-${d.k}"><div class="k">${esc(d.title)}</div><div class="t">${esc(d.text)}</div>${d.why?`<div class="why">${esc(d.why)}</div>`:""}
       <div class="btns">${actionButtons(c,d)}</div></div>
-      <div class="sect"><span>Top-warning flags</span><span class="mono">${nflags}/7</span></div>
-      <div class="meter">${[...Array(7)].map((_,i)=>`<i class="${i<nflags?"f":""}"></i>`).join("")}</div>
-      <div class="chips" style="margin-top:8px">${Object.keys(FLAG_INFO).map(k=>{const auto=c.flags[k];const on=auto?auto.on:man[k];
-        return `<div class="chip ${on?"on":""} ${FLAG_INFO[k].man?"man":""}" ${FLAG_INFO[k].man?`onclick="toggleManual('${c.symbol}','${k}')"`:""} title="${esc(auto?auto.detail:"Tap to toggle — your judgment")}"><span class="d"></span><span>${FLAG_INFO[k].n}<small>${esc(auto?auto.detail:(on?"you flagged this · tap to clear":"tap if you see it"))}</small></span></div>`}).join("")}</div>
+      <div class="sect"><span>Top-warning flags</span><span class="mono">${nflags}/${NFLAGS}</span></div>
+      <div class="meter">${[...Array(NFLAGS)].map((_,i)=>`<i class="${i<nflags?"f":""}"></i>`).join("")}</div>
+      <div class="chips" style="margin-top:8px">${Object.keys(FLAG_INFO).map(k=>{const f=(c.flags||{})[k],on=flagOn(c,k),o=ovr(c.symbol,k),info=FLAG_INFO[k];
+        const det=(f?f.detail:"no data yet")+(o?` · set ${o.v?"ON":"OFF"} by you (tap to change)`:(info.ov?" · tap to override":""));
+        return `<div class="chip ${on?"on":""} ${info.ov?"man":""}" ${info.ov?`onclick="cycleOverride('${c.symbol}','${k}')"`:""} title="${esc(det)}"><span class="d"></span><span>${info.n}<small>${esc(det)}</small></span></div>`}).join("")}</div>
       <div class="sect"><span>Bottom signals</span><span class="mono">${c.bottom_count}/3</span></div>
       <div class="chips">${Object.keys(c.bottoms).map(k=>`<div class="chip ${c.bottoms[k].on?"bon":""}"><span class="d"></span><span>${BOTTOM_INFO[k]}<small>${esc(c.bottoms[k].detail)}</small></span></div>`).join("")}</div>
       <div class="sect"><span>Dip ladder · from ${money(c.ladder.anchor)}</span><span class="mono">${money(coinAvail(c.symbol))} left</span></div>
@@ -302,6 +321,30 @@ function renderReserve(){const syms=(DATA?DATA.coins.map(c=>c.symbol):Object.key
     <div class="card" style="margin-top:14px"><b>Limit orders to place now</b><p class="small muted">Put these in on your exchange so dips get bought while you're asleep or frozen.</p>
     <table><tr><th>Coin</th><th>Rung</th><th>Limit price</th><th>Spend</th><th>≈ Coins</th></tr>${(DATA?DATA.coins:[]).flatMap(c=>c.ladder.rungs.filter(r=>!C(c.symbol).rungsDone.includes(r.n)).map(r=>{const a=coinBudget(c.symbol)*r.share/100;return `<tr><td>${c.symbol}</td><td>${r.n} (−${r.drop}%)</td><td class="mono">${money(r.price)}</td><td class="mono">${money(a)}</td><td class="mono">${a?qty(a/r.price):"–"}</td></tr>`})).join("")}</table></div>`;}
 
+function ago(ts){const m=Math.max(0,(Date.now()/1000-ts)/60);return m<60?Math.round(m)+"m":m<1440?Math.round(m/60)+"h":Math.round(m/1440)+"d";}
+const TAGC={catalyst:"var(--blue)",hype:"var(--amber)",risk:"var(--red)",macro:"var(--violet)",official:"var(--green)"};
+function bars(daily){if(!daily||!daily.length)return "";const mx=Math.max(1,...daily.map(d=>d[1])),w=280,h=40,bw=w/daily.length;
+  return `<svg viewBox="0 0 ${w} ${h+12}" style="width:100%;height:52px">${daily.map((d,i)=>`<rect x="${i*bw+1}" y="${h-d[1]/mx*h}" width="${bw-2}" height="${Math.max(d[1]/mx*h,1)}" rx="2" fill="${i>=daily.length-3?"var(--amber)":"#3a4668"}"><title>${d[0]}: ${d[1]}</title></rect>`).join("")}<text x="0" y="${h+11}" font-size="9" fill="#8a96b0">${daily[0][0].slice(5)}</text><text x="${w}" y="${h+11}" font-size="9" fill="#8a96b0" text-anchor="end">today</text></svg>`;}
+function renderNews(){if(!DATA)return `<div class="card">Loading…</div>`;const N=DATA.news;
+  if(!N)return `<div class="card muted">No news data yet. It appears after the next watcher run.</div>`;
+  const src=(N.sources||[]).map(x=>`<span class="pill" style="${x.ok?"":"color:var(--red);border-color:#6a2635"}" title="${esc(x.error||x.items+" items")}">${x.ok?"✓":"✗"} ${esc(x.name)}</span>`).join(" ");
+  const tr=N.trending||{};
+  let h=`<div class="card"><div class="row" style="justify-content:space-between"><b>Hype meter</b><span class="small muted">Amber bars = last 3 days. Mentions are counted from the fixed outlets below.</span></div>
+    <div class="grid" style="margin-top:10px">${DATA.coins.filter(c=>c.news).map(c=>{const m=c.news;
+      return `<div class="bk" style="padding:10px"><div class="row" style="justify-content:space-between"><b>${esc(c.symbol)}</b><span class="small mono">${m.spike_ratio!=null?m.spike_ratio+"× normal":"baseline "+m.baseline_days+"/7 days"}</span></div>
+      ${bars(m.daily14)}
+      <div class="small muted">${m.mentions_3d} mentions in 3 days${m.baseline_per_day!=null?` · normal ${(+m.baseline_per_day).toFixed(1)}/day`:""} · ${m.catalysts_7d} catalyst · ${m.hype_3d} hype · ${m.trending_rank?"#"+m.trending_rank+" trending":"not trending"}</div>
+      <div class="small" style="margin-top:4px"><span class="${flagOn(c,"news")?"dn":"muted"}">● News priced in</span> &nbsp; <span class="${flagOn(c,"fomo")?"dn":"muted"}">● Social FOMO</span></div></div>`}).join("")}</div>
+    <div class="small muted" style="margin-top:10px">Sources: ${src}<br>CoinGecko trending: ${tr.ok?((tr.ids||[]).slice(0,15).map(esc).join(", ")||"empty"):"unavailable this run"}${tr.note?" ("+esc(tr.note)+")":""}</div></div>`;
+  const coins=["all","market"].concat(DATA.coins.map(c=>c.symbol)),tags=["all","catalyst","hype","risk","macro","official"];
+  h+=`<div class="row" style="margin:14px 0 8px">${coins.map(k=>`<button class="b ${NEWSF.coin===k?"pri":""}" onclick="NEWSF.coin='${k}';render()">${k==="all"?"All coins":k==="market"?"Market":k}</button>`).join("")}</div>
+    <div class="row" style="margin-bottom:10px">${tags.map(k=>`<button class="b ${NEWSF.tag===k?"pri":""}" onclick="NEWSF.tag='${k}';render()">${k==="all"?"All tags":k}</button>`).join("")}</div>`;
+  const items=(N.items||[]).filter(i=>(NEWSF.coin==="all"||(NEWSF.coin==="market"?!i.coins.length:i.coins.includes(NEWSF.coin)))&&(NEWSF.tag==="all"||i.tags.includes(NEWSF.tag))).slice(0,150);
+  h+=`<div class="card">${items.length?`<table>${items.map(i=>`<tr><td class="small muted mono" style="white-space:nowrap">${ago(i.ts)}</td><td><a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a>
+      <div class="small muted">${esc(i.source)} ${i.coins.map(x=>`<span class="pill">${esc(x)}</span>`).join(" ")} ${i.tags.map(t=>`<span class="pill" style="color:${TAGC[t]||"inherit"}">${t}</span>`).join(" ")}</div></td></tr>`).join("")}</table>`:`<div class="muted">No headlines match this filter in the last 7 days.</div>`}</div>
+    <p class="small muted">Headlines are matched to coins by fixed keywords and tagged by fixed word lists. No AI. A tag can occasionally be wrong; flags always show what triggered them.</p>`;
+  return h;}
+
 function renderJournal(){if(!S.log.length)return `<div class="card muted">Nothing logged yet. Your first check-in starts the journal.</div>`;
   return `<div class="card"><table><tr><th>When</th><th>Coin</th><th>What happened</th><th>XP</th></tr>${S.log.map(l=>`<tr><td class="small muted">${new Date(l.ts).toLocaleString()}</td><td>${esc(l.coin)}</td><td>${esc(l.text)}</td><td class="mono ${l.xp>=0?"up":"dn"}">${l.xp>=0?"+":""}${l.xp}</td></tr>`).join("")}</table></div>`;}
 
@@ -320,7 +363,7 @@ function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S
     <div class="btns"><button class="b" onclick="copyBackup()">Copy backup</button><button class="b" onclick="restore()">Restore from backup</button><button class="b warn" onclick="wipe()">Reset everything</button></div></div>`;}
 
 function render(){renderHeader();const v=document.getElementById("view");
-  v.innerHTML=TAB==="missions"?renderMissions():TAB==="reserve"?renderReserve():TAB==="journal"?renderJournal():TAB==="badges"?renderBadges():renderSetup();
+  v.innerHTML=TAB==="missions"?renderMissions():TAB==="reserve"?renderReserve():TAB==="journal"?renderJournal():TAB==="badges"?renderBadges():TAB==="news"?renderNews():renderSetup();
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB));}
 
 /* ---------- actions ---------- */
@@ -330,7 +373,10 @@ function closeModal(){document.getElementById("modal").classList.remove("open");
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
 
 function doCheckIn(){if(checkIn())render();}
-function toggleManual(sym,k){const m=C(sym).manual;if(m[k]&&Date.now()-m[k]<7*864e5)delete m[k];else m[k]=Date.now();save();render();}
+// tap cycles: automatic -> forced ON -> forced OFF -> automatic (overrides expire after 7 days)
+function cycleOverride(sym,k){const me=C(sym);me.ovr=me.ovr||{};const o=ovr(sym,k);
+  if(!o)me.ovr[k]={v:true,ts:Date.now()};else if(o.v)me.ovr[k]={v:false,ts:Date.now()};else delete me.ovr[k];
+  save();render();}
 function skip(sym,what){addXP(5,`Logged a skip on ${what}. Honest logging still counts.`,sym,"skip");render();}
 
 function logBuy(sym,n){const c=eff(coinData(sym)),r=n?c.ladder.rungs[n-1]:null;const amt=r?coinBudget(sym)*r.share/100:0;
@@ -340,7 +386,9 @@ function logBuy(sym,n){const c=eff(coinData(sym)),r=n?c.ladder.rungs[n-1]:null;c
   <div class="btns"><button class="b pri" onclick="confirmBuy('${sym}',${n})">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
 function confirmBuy(sym,n){const amt=+document.getElementById("mAmt").value,px=+document.getElementById("mPx").value,dest=document.getElementById("mDest").value;
   if(!(amt>0&&px>0))return toast("Enter amount and price");
-  const me=C(sym),q=amt/px,held=me.core+me.trade;me.avgCost=(me.avgCost*held+amt)/(held+q);me[dest]+=q;
+  const me=C(sym),q=amt/px,held=me.core+me.trade;
+  if(me.avgCost>0)me.avgCost=(me.avgCost*held+amt)/(held+q);else if(held===0)me.avgCost=px; // unknown cost + existing coins: leave unknown
+  me[dest]+=q;
   if(n){S.spent[sym]=(S.spent[sym]||0)+amt;me.rungsDone.push(n);me.cycle={baseline:null,tiersDone:0};badge("first_rung");if(me.rungsDone.length>=4)badge("full_ladder");
     addXP(50,`Bought ladder rung ${n}: ${qty(q)} ${sym} at ${money(px)}. Rule followed.`,sym,"buy");}
   else addXP(15,`Core buy: ${qty(q)} ${sym} at ${money(px)}.`,sym,"buy");
@@ -351,7 +399,8 @@ function logTrim(sym){const c=eff(coinData(sym)),d=directive(c);
   <div><label>Price</label><input id="mPx" type="number" step="any" value="${c.price.toPrecision(6)}"></div></div>
   <div class="btns"><button class="b pri" onclick="confirmTrim('${sym}',${d.t})">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
 function confirmTrim(sym,t){const q=+document.getElementById("mQ").value,px=+document.getElementById("mPx").value;if(!(q>0&&px>0))return toast("Enter coins and price");
-  const me=C(sym);if(!me.cycle.baseline)me.cycle.baseline=me.trade;me.trade=Math.max(0,me.trade-q);me.cycle.tiersDone=t;S.reserve.total=(S.reserve.total||0)+q*px;
+  const me=C(sym);if(!me.cycle.baseline){me.cycle.baseline=me.trade;me.cycle.since=Date.now();me.cycle.peak=px;}else me.cycle.peak=Math.max(me.cycle.peak||px,px);
+  me.trade=Math.max(0,me.trade-q);me.cycle.tiersDone=t;S.reserve.total=(S.reserve.total||0)+q*px;
   badge("took_profit");addXP(60,`Trimmed ${qty(q)} ${sym} at ${money(px)}. ${money(q*px)} added to your dip reserve.`,sym,"trim");closeModal();render();}
 
 function logStop(sym){const c=eff(coinData(sym)),me=C(sym);
@@ -396,7 +445,7 @@ async function fetchData(){
   try{const r=await fetch(S.settings.dataUrl+(S.settings.dataUrl.includes("?")?"&":"?")+"t="+Date.now(),{cache:"no-store"});if(!r.ok)throw new Error(r.status);
     DATA=await r.json();IS_DEMO=false;FETCH_ERR=null;}
   catch(e){FETCH_ERR=String(e.message||e);if(DEMO){DATA=DEMO;IS_DEMO=true;}}
-  if(DATA&&DATA.generated_at!==prevGen)CH.candles={};
+  if(DATA&&DATA.generated_at!==prevGen){CH.candles={};if(prevGen)refreshPeaks();}
   if(DATA)DATA.coins.forEach(c=>C(c.symbol));cleanCheck();save();
   const ae=document.activeElement;if(ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName))return;render();}
 
@@ -432,7 +481,8 @@ function connectLive(){
 function tickUI(ws){const c=DATA&&DATA.coins.find(x=>wsSym(x)===ws);if(!c)return;const e=eff(c);
   const px=document.getElementById("px-"+c.symbol);if(px&&px.textContent!==money(e.price)){px.textContent=money(e.price);px.classList.remove("flash");void px.offsetWidth;px.classList.add("flash");}
   const ch=document.getElementById("ch-"+c.symbol);if(ch){ch.textContent=pc(e.change_24h)+" 24h";ch.className=e.change_24h>=0?"up":"dn";}
-  const src=document.getElementById("src-"+c.symbol);if(src)src.textContent=e.live?"● live":"watcher";
+  const src=document.getElementById("src-"+c.symbol);if(src){src.textContent=e.live?"● live":"watcher";src.className="pill "+(e.live?"lv":"");}
+  const sp=document.getElementById("sp-"+c.symbol);if(sp){const col=(c.change_7d||0)>=0?"var(--green)":"var(--red)";sp.innerHTML=spark(liveSpark(e),col);}
   const cp=document.getElementById("chartPx");if(cp&&CH.sym===c.symbol)cp.textContent=money(e.price);
   LIVE.dirty=true;}
 // re-check missions with live prices every 20s (never while you're typing or a dialog is open)
@@ -456,7 +506,7 @@ function openChart(sym){const c=eff(coinData(sym));CH.sym=sym;
   modal(`<div class="row" style="justify-content:space-between"><div><h3 style="margin:0">${sym} <span class="mono" id="chartPx">${money(c.price)}</span></h3>
     <div class="small muted" id="chartNote"></div></div><div class="row"><div class="ivs">${Object.keys(IV).map(k=>`<button class="b ${k===CH.iv?"on":""}" data-iv="${k}" onclick="setIv('${k}')">${k.toUpperCase()}</button>`).join("")}</div><button class="b" onclick="closeModal()">✕</button></div></div>
     <div id="chart"></div>
-    <div class="legend"><span style="--c:#5aa9ff">20 avg</span><span style="--c:#ffb547">50 avg</span><span style="--c:#a98bff">200 avg</span><span style="--c:#5aa9ff;opacity:.6">ladder rungs</span><span style="--c:#ff5c7a">trailing stop</span><span style="--c:#3ddc97">your avg cost</span></div>
+    <div class="legend"><span style="--c:#5aa9ff">20 avg</span><span style="--c:#ffb547">50 avg</span><span style="--c:#a98bff">200 avg</span><span style="--c:#5aa9ff;opacity:.6">ladder rungs</span><span style="--c:#ff5c7a">your trailing stop (after a trim)</span><span style="--c:#3ddc97">your avg cost</span></div>
     <p class="small muted">Decide on the <b>1D</b> chart, check the big picture on <b>1W</b>. 1H and 4H are mostly noise. Use them to watch, not to act.</p>`);
   drawChart();}
 function setIv(k){CH.iv=k;document.querySelectorAll(".ivs button").forEach(b=>b.classList.toggle("on",b.dataset.iv===k));drawChart();}
@@ -474,8 +524,7 @@ async function drawChart(){const sym=CH.sym,c=coinData(sym),el=document.getEleme
   s.setData(bars);
   [[20,"#5aa9ff"],[50,"#ffb547"],[200,"#a98bff"]].forEach(([n,col])=>{if(bars.length>n){const l=ch.addLineSeries({color:col,lineWidth:1.5,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});l.setData(smaLine(bars,n));}});
   c.ladder.rungs.forEach(r=>s.createPriceLine({price:r.price,color:"rgba(90,169,255,.55)",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"rung "+r.n}));
-  s.createPriceLine({price:c.trailing_stop,color:"#ff5c7a",lineWidth:1,lineStyle:1,axisLabelVisible:true,title:"trail stop"});
-  const me=C(sym);if(me.avgCost)s.createPriceLine({price:me.avgCost,color:"#3ddc97",lineWidth:1,lineStyle:0,axisLabelVisible:true,title:"your cost"});
+  const me=C(sym);const st=stopLevel(me,eff(c));if(st)s.createPriceLine({price:st,color:"#ff5c7a",lineWidth:1,lineStyle:1,axisLabelVisible:true,title:"your stop"});if(me.avgCost)s.createPriceLine({price:me.avgCost,color:"#3ddc97",lineWidth:1,lineStyle:0,axisLabelVisible:true,title:"your cost"});
   const show={"1h":120,"4h":150,"1d":180,"1w":200}[CH.iv];ch.timeScale().setVisibleLogicalRange({from:bars.length-show,to:bars.length+3});
   CH.chart=ch;CH.series=s;
   CH.ro=new ResizeObserver(()=>{if(CH.chart)CH.chart.applyOptions({width:el.clientWidth});});CH.ro.observe(el);
@@ -487,7 +536,7 @@ async function drawChart(){const sym=CH.sym,c=coinData(sym),el=document.getEleme
     note.textContent="Streaming live from Kraken";}};
   wsSend({method:"subscribe",params:{channel:"ohlc",symbol:[LIVE.ohlc.sym],interval:LIVE.ohlc.iv}});}
 
-fetchData().then(()=>{setLive("off");connectLive();});setInterval(fetchData,5*60*1000);setInterval(renderHeader,60*1000);
+fetchData().then(()=>{setLive("off");connectLive();refreshPeaks();});setInterval(fetchData,5*60*1000);setInterval(renderHeader,60*1000);
 </script>
 </body>
 </html>
