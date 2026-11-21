@@ -1,0 +1,29 @@
+{
+  "_help": "Edit this file on GitHub to add coins or change rules. 'kraken' is the Kraken spot pair, 'futures' the Kraken perpetual (leave \"\" if none). 'anchor' is the price your dip ladder measures drops from; null = use the price on the first run. Change anchor to reset the ladder.",
+  "coins": [
+    { "symbol": "ETH", "name": "Ethereum", "kraken": "ETHUSD", "futures": "PF_ETHUSD", "anchor": null },
+    { "symbol": "SOL", "name": "Solana",   "kraken": "SOLUSD", "futures": "PF_SOLUSD", "anchor": null },
+    { "symbol": "XRP", "name": "XRP",      "kraken": "XRPUSD", "futures": "PF_XRPUSD", "anchor": null }
+  ],
+  "ladder": [
+    { "drop": 10, "share": 25 },
+    { "drop": 20, "share": 25 },
+    { "drop": 30, "share": 25 },
+    { "drop": 40, "share": 25 }
+  ],
+  "thresholds": {
+    "vertical_7d_pct": 60,
+    "vertical_30d_pct": 150,
+    "stretched_ma50_pct": 50,
+    "stretched_ma20_pct": 35,
+    "rsi_daily_hot": 85,
+    "rsi_weekly_hot": 80,
+    "funding_hot": 0.00005,
+    "oi_growth_7d_pct": 30,
+    "near_200w_pct": 10,
+    "rsi_weekly_cold": 30,
+    "capitulation_volume_x": 2.5,
+    "capitulation_drop_pct": 5,
+    "trailing_stop_pct": 25
+  }
+}
