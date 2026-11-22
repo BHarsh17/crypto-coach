@@ -37,7 +37,7 @@ DAY = 86400
 FEE = 0.0025            # Kraken Pro maker fee (limit orders), both ways
 START_HOLDING_USD = 1000.0
 RESERVE_USD = 500.0
-CORE_SHARE = 0.5        # half core, half trade bucket
+CORE_SHARE = 0.4        # 40% core, 60% trade bucket (like keeping 4 of 10 coins)
 
 
 def day(t):
@@ -162,6 +162,89 @@ def simulate(daily, i0, i1, signals, ladder, th, buy_early=True, boost_fraction=
     return finish(st, daily[i1]["c"], p0, events, trims)
 
 
+def simulate_tp(daily, i0, i1, signals, th, tp_levels, tp_share, rebuy, dip, flags_accelerate=False):
+    """Rise ladder (take-profits) + dip ladder.
+    tp_levels: % above your average cost where a slice of the trade bucket is sold (limit orders: fill if
+               the day's high reaches them). tp_share: slice size as a share of the trade bucket at the
+               start of the cycle. After every sale, the buy-back ladder `rebuy` (drops below the SALE
+               price) is rebuilt with the cash on hand. A buy-back starts a fresh cycle.
+    flags_accelerate: 3+ top flags sell the next unfilled level right away at the close."""
+    p0 = daily[i0]["c"]
+    held = START_HOLDING_USD / p0
+    st = {"core": held * CORE_SHARE, "trade": held * (1 - CORE_SHARE), "cash": RESERVE_USD,
+          "reserve_total": RESERVE_USD, "fees": 0.0, "cost_total": START_HOLDING_USD}
+    lad = {"anchor": p0, "budget": RESERVE_USD, "rungs": dip, "left": [1.0] * len(dip), "day": i0}
+    cyc = {"baseline": None, "done": set(), "accel": 0, "day": i0}
+    # An order placed today can't fill until tomorrow: we can't know whether the day's high came before its low.
+    events, sells = [], 0
+
+    def coins():
+        return st["core"] + st["trade"]
+
+    def avg_cost():
+        return st["cost_total"] / coins() if coins() > 0 else p0
+
+    def buy(usd, px, why, t):
+        usd = min(usd, st["cash"])
+        if usd <= 0.005:
+            return
+        q = usd * (1 - FEE) / px
+        st["cash"] -= usd
+        st["fees"] += usd * FEE
+        st["trade"] += q
+        st["cost_total"] += usd
+        events.append([day(t), why, round(px, 6), round(usd, 2), round(q, 6)])
+
+    def sell(q, px, why, t):
+        nonlocal sells
+        q = min(q, st["trade"])
+        if q <= 1e-12:
+            return
+        ac = avg_cost()
+        got = q * px * (1 - FEE)
+        st["trade"] -= q
+        st["cost_total"] -= q * ac          # average-cost accounting: selling doesn't change the average
+        st["cash"] += got
+        st["fees"] += q * px * FEE
+        sells += 1
+        events.append([day(t), why, round(px, 6), round(-got, 2), round(-q, 6)])
+        lad.update(anchor=px, budget=st["cash"], rungs=rebuy, left=[1.0] * len(rebuy), day=today[0])
+
+    today = [i0]
+    for i in range(i0, i1 + 1):
+        c = daily[i]
+        today[0] = i
+        if i > i0 and lad["day"] < i:
+            for k, r in enumerate(lad["rungs"]):
+                px = lad["anchor"] * (1 - r["drop"] / 100)
+                if lad["left"][k] > 1e-9 and c["l"] <= px:
+                    buy(lad["budget"] * r["share"] / 100 * lad["left"][k], px, f"buy-back rung {k + 1} filled", c["t"])
+                    lad["left"][k] = 0.0
+                    cyc = {"baseline": None, "done": set(), "accel": 0, "day": i}
+        if i > i0 and cyc["day"] < i:
+            for k, lvl in enumerate(tp_levels):
+                if k in cyc["done"] or st["trade"] <= 1e-12:
+                    continue
+                target = avg_cost() * (1 + lvl / 100)
+                if c["h"] >= target:
+                    if cyc["baseline"] is None:
+                        cyc["baseline"] = st["trade"]
+                    sell(cyc["baseline"] * tp_share, target, f"take-profit +{lvl}% hit", c["t"])
+                    cyc["done"].add(k)
+        if flags_accelerate:
+            flags, _ = signals(i)
+            t_ = watch.tier(len(flags))
+            if len(flags) >= 3 and t_ > cyc["accel"] and st["trade"] > 1e-12:
+                nxt = [k for k in range(len(tp_levels)) if k not in cyc["done"]][: t_ - cyc["accel"]]
+                for k in nxt:
+                    if cyc["baseline"] is None:
+                        cyc["baseline"] = st["trade"]
+                    sell(cyc["baseline"] * tp_share, c["c"], f"overheated ({len(flags)} flags): next take-profit early", c["t"])
+                    cyc["done"].add(k)
+                cyc["accel"] = t_
+    return finish(st, daily[i1]["c"], p0, events, sells)
+
+
 def finish(st, end_px, p0, events, trims=0):
     coins = st["core"] + st["trade"]
     start_coins = START_HOLDING_USD / p0
@@ -201,6 +284,25 @@ def fetch(pair):
     return d, w
 
 
+def half2(step):
+    """Your manual method's buy-backs: half at -step%, half at -2*step% below the sale price."""
+    return [{"drop": step, "share": 50}, {"drop": 2 * step, "share": 50}]
+
+
+def overall(coins):
+    """Rank strategies across coins by how they did versus monthly DCA (total value in coins)."""
+    rows = {}
+    ok = [c for c in coins if "results" in c]
+    for c in ok:
+        dca = c["results"]["dca"]["coin_equiv"]
+        for k, r in c["results"].items():
+            rows.setdefault(k, []).append(r["coin_equiv"] / dca - 1)
+    out = [{"strategy": k, "avg_vs_dca_pct": round(100 * sum(v) / len(v), 2),
+            "worst_vs_dca_pct": round(100 * min(v), 2),
+            "coins_beating_dca": sum(1 for x in v if x > 1e-9), "coins": len(v)} for k, v in rows.items()]
+    return sorted(out, key=lambda r: (-r["coins_beating_dca"], -r["avg_vs_dca_pct"]))
+
+
 def backtest_coin(symbol, daily, weekly, months, cfg, now=None):
     th, ladder = cfg["thresholds"], cfg["ladder"]
     now = time.time() if now is None else now
@@ -213,6 +315,11 @@ def backtest_coin(symbol, daily, weekly, months, cfg, now=None):
         "ladder_only": simulate(daily, i0, i1, sig, ladder, th, buy_early=False),
         "reanchor": simulate(daily, i0, i1, sig, ladder, th, buy_early=False, reanchor_on_trim=True),
         "hybrid": simulate(daily, i0, i1, sig, deep, th, buy_early=False, reanchor_on_trim=True, dca_share=0.5),
+        "rise": simulate_tp(daily, i0, i1, sig, th, [25, 50, 75, 100], 0.25, deep, deep),
+        "rise_flags": simulate_tp(daily, i0, i1, sig, th, [25, 50, 75, 100], 0.25, deep, deep, flags_accelerate=True),
+        "yours_10_20": simulate_tp(daily, i0, i1, sig, th, [10, 20], 0.5, half2(10), deep),
+        "yours_20_40": simulate_tp(daily, i0, i1, sig, th, [20, 40], 0.5, half2(20), deep),
+        "yours_30_60": simulate_tp(daily, i0, i1, sig, th, [30, 60], 0.5, half2(30), deep),
         "dca": simple(daily, i0, i1, "dca"),
         "lump": simple(daily, i0, i1, "lump"),
         "cash": simple(daily, i0, i1, "cash"),
@@ -279,11 +386,11 @@ def main():
             out.append({"symbol": sym, "error": str(e)[:200]})
     doc = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "version": watch.VERSION,
            "months": a.months, "assumptions": {
-               "start": f"${START_HOLDING_USD:,.0f} of the coin (half core, half trade) + ${RESERVE_USD:,.0f} dip reserve",
+               "start": f"${START_HOLDING_USD:,.0f} of the coin ({CORE_SHARE:.0%} core, {1 - CORE_SHARE:.0%} trade) + ${RESERVE_USD:,.0f} dip reserve",
                "fees": f"{FEE * 100:.2f}% per trade (Kraken Pro limit orders)",
                "fills": "ladder rungs fill at the rung price if the day's low touches it; other actions at the daily close",
                "not_tested": "news, FOMO, leverage and shorts-crowded signals (no free history), so they are treated as off"},
-           "coins": out}
+           "coins": out, "overall": overall(out)}
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with open(a.out, "w") as f:
         json.dump(doc, f, indent=1)

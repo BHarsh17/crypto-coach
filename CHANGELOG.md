@@ -4,6 +4,13 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 3.3.0 · 2026-11-22
+- **Backtest now checks your own trading method** at three spacings: take-profits at +10/+20%, +20/+40% and +30/+60% above your average cost (half the trade bucket each), with buy-backs the same distance and double the distance below each sale.
+- **Rise ladder strategies:** take-profits at +25/50/75/100% (a quarter each), with and without "sell the next one early when overheated".
+- **Overall ranking** at the top of the Backtest tab: for each approach, how many coins it beat monthly DCA on, its average, and its worst case.
+- Backtest starts with 40% core / 60% trade, like keeping 4 of 10 coins.
+- More realistic fills: an order placed today can't fill until tomorrow, because a daily candle doesn't show whether its high or low came first.
+
 ## 3.2.0 · 2026-11-22
 - **Backtest scoring is fairer:** the score is now total value in coins (coins + cash converted at the final price), so selling high and holding cash, like QNT's trims, counts properly.
 - **Two new strategies to test:** "Ladder moves after trims" (after each trim, the ladder restarts from the trim price using the cash on hand) and "Half monthly + half deep ladder" (half the reserve bought monthly, half on a −10/−25/−40/−55% ladder that also moves after trims; no buy-early). Replaces the earlier "proposed tweaks".

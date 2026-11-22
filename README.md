@@ -1,6 +1,6 @@
 # Crypto Coach
 
-**Version:** see `VERSION` (currently 3.2.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+**Version:** see `VERSION` (currently 3.3.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
 
 **Your rules, not your gut.** Crypto Coach watches your coins, checks them against rules you set ahead of time, and tells you what those rules say to do: hold, buy a dip rung, trim a pump, or follow a stop. You still make every trade. It just makes sure the plan gets followed instead of the panic.
 
@@ -119,7 +119,7 @@ The app is one web page (`site/index.html`). Open it at **https://bharsh17.githu
 
 - **Missions tab:** one card per coin, showing the live price, a chart, **one mission** (what your rules say right now), the flags, the bottom signals, the dip ladder and your buckets.
 - **News tab:** the hype meter and every headline the watcher matched to your coins (see [The News tab](#the-news-tab)).
-- **Backtest tab:** what these exact rules would have done over the last 18 months of real prices, for each coin plus BTC. It compares the rules as built, ladder only, the ladder moving after trims, half monthly + half deep ladder, monthly DCA, buying everything on day 1, and keeping cash. Scored by total value in coins (coins + cash at the final price). Recalculated once a day.
+- **Backtest tab:** what these exact rules would have done over the last 18 months of real prices, for each coin plus BTC. It compares the rules as built, several variations, a take-profit "rise ladder", your own manual take-profit method at three spacings, monthly DCA, buying everything on day 1, and keeping cash, with an overall ranking across coins. Scored by total value in coins (coins + cash at the final price). Recalculated once a day.
 - **Dip reserve tab:** your cash pool for buying dips, how much each coin has used, and a **list of limit orders to place** on your exchange.
 - **Journal tab:** how XP works, then everything you've logged, with XP.
 - **Setup tab:** your holdings, average cost, dip reserve and backup.

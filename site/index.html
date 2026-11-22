@@ -146,7 +146,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "3.2.0";
+const APP_VERSION = "3.3.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -351,7 +351,10 @@ const XP_HELP=`<div class="card" style="margin-bottom:14px"><b>How XP works</b><
 let BT=null,BT_ERR=null;
 async function loadBacktest(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,"");const r=await fetch(base+"backtest.json?t="+Date.now(),{cache:"no-store"});
   if(!r.ok)throw new Error("HTTP "+r.status);BT=await r.json();BT_ERR=null;}catch(e){BT_ERR=String(e.message||e);}if(TAB==="backtest")render();}
-const BT_NAMES={app:"Crypto Coach (as built)",ladder_only:"Ladder only (no buy-early)",reanchor:"Ladder moves after trims",hybrid:"Half monthly + half deep ladder",proposed:"Proposed tweaks",dca:"Monthly DCA",lump:"All-in on day 1",cash:"Keep the cash"};
+const BT_NAMES={app:"Crypto Coach (as built)",ladder_only:"Ladder only (no buy-early)",reanchor:"Ladder moves after trims",hybrid:"Half monthly + half deep ladder",
+  rise:"Rise ladder: take-profits +25/50/75/100%",rise_flags:"Rise ladder + sell early when overheated",
+  yours_10_20:"Your method: TP +10/+20%, rebuy −10/−20%",yours_20_40:"Your method: TP +20/+40%, rebuy −20/−40%",yours_30_60:"Your method: TP +30/+60%, rebuy −30/−60%",
+  proposed:"Proposed tweaks",dca:"Monthly DCA",lump:"All-in on day 1",cash:"Keep the cash"};
 const score=r=>r.coin_equiv!=null?r.coin_equiv:r.coins;
 function renderBacktest(){if(!BT&&!BT_ERR){loadBacktest();return `<div class="card">Loading backtest…</div>`;}
   if(!BT)return `<div class="card muted">No backtest published yet (${esc(BT_ERR)}). It's calculated by the watcher once a day; check back after the next run.</div>`;
@@ -359,15 +362,20 @@ function renderBacktest(){if(!BT&&!BT_ERR){loadBacktest();return `<div class="ca
   let h=`<div class="card"><b>What would the rules have done?</b> <span class="small muted">· last ${BT.months} months · calculated ${new Date(BT.generated_at).toLocaleString()} · v${esc(BT.version)}</span>
     <p class="small muted" style="margin:8px 0 0">Start: ${esc(A.start||"")}. Fees: ${esc(A.fees||"")}. ${esc(A.fills||"")}. Not tested: ${esc(A.not_tested||"")}.<br>
     <b>Score = total value in coins</b>: coins held plus any cash converted at the final price, so selling high and holding cash counts fairly. <b>Ladder moves after trims</b> = after each trim the ladder restarts from the trim price, using the cash on hand. <b>Half monthly + half deep ladder</b> = half the reserve bought monthly, half on a −10/−25/−40/−55% ladder that also moves after trims; no buy-early.</p></div>`;
+  if(BT.overall&&BT.overall.length){
+    h+=`<div class="card" style="margin-top:14px"><b>Overall: which approach held up across all coins?</b>
+      <p class="small muted" style="margin:4px 0 8px">Compared with monthly DCA on each coin, scored as total value in coins. Look for a high <b>average</b> and a <b>worst case</b> that isn't ugly. Consistent beats spectacular.</p>
+      <table><tr><th>Strategy</th><th>Coins where it beat DCA</th><th>Average vs DCA</th><th>Worst coin vs DCA</th></tr>
+      ${BT.overall.filter(r=>r.strategy!=="dca").map(r=>`<tr><td>${BT_NAMES[r.strategy]||r.strategy}</td><td class="mono">${r.coins_beating_dca} / ${r.coins}</td><td class="mono ${r.avg_vs_dca_pct>=0?"up":"dn"}">${pc(r.avg_vs_dca_pct)}</td><td class="mono ${r.worst_vs_dca_pct>=0?"up":"dn"}">${pc(r.worst_vs_dca_pct)}</td></tr>`).join("")}</table></div>`;}
   for(const c of BT.coins){
     if(c.error){h+=`<div class="card" style="margin-top:14px"><b>${esc(c.symbol)}</b> <span class="muted small">failed: ${esc(c.error)}</span></div>`;continue;}
     const R=c.results,best=Math.max(...Object.values(R).filter((r,i)=>Object.keys(R)[i]!=="cash").map(score)),dca=score(R.dca);
     h+=`<div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between"><b style="font-size:18px">${esc(c.symbol)}</b>
       <span class="small mono">${c.start} → ${c.end} · ${money(c.start_price)} → ${money(c.end_price)} <span class="${c.change_pct>=0?"up":"dn"}">${pc(c.change_pct)}</span> · low ${money(c.low)} · high ${money(c.high)}</span></div>
-      <table style="margin-top:8px"><tr><th>Strategy</th><th>Score (in coins)</th><th>vs monthly DCA</th><th>Coins held</th><th>Value</th><th>Avg buy price</th><th>Trims</th></tr>
+      <table style="margin-top:8px"><tr><th>Strategy</th><th>Score (in coins)</th><th>vs monthly DCA</th><th>Coins held</th><th>Value</th><th>Avg buy price</th><th>Sells</th></tr>
       ${Object.keys(BT_NAMES).filter(k=>R[k]).map(k=>{const r=R[k],sc=score(r),top=k!=="cash"&&sc===best;return `<tr style="${top?"background:#0f1f1a":""}"><td>${BT_NAMES[k]}${top?" 🏆":""}</td><td class="mono"><b>${qty(sc)}</b></td>
         <td class="mono ${sc>=dca?"up":"dn"}">${k==="dca"?"—":pc((sc/dca-1)*100)}</td><td class="mono">${qty(r.coins)}</td><td class="mono">${money(r.value)}${r.cash>0.5?` <span class="muted small">(incl. ${money(r.cash)} cash)</span>`:""}</td>
-        <td class="mono">${r.avg_buy_price?money(r.avg_buy_price):"—"}</td><td class="mono">${["app","ladder_only","reanchor","hybrid","proposed"].includes(k)?r.trims:"—"}</td></tr>`}).join("")}</table>
+        <td class="mono">${r.avg_buy_price?money(r.avg_buy_price):"—"}</td><td class="mono">${["dca","lump","cash"].includes(k)?"—":r.trims}</td></tr>`}).join("")}</table>
       <div class="small muted" style="margin-top:4px">🏆 = best of the buying strategies. Keeping the cash is shown for reference; it always wins when prices fall, but nobody knows that in advance.</div>
       <div class="small muted" style="margin-top:6px">Signals over the period: max ${c.signals.max_top_flags} top flags, max ${c.signals.max_bottom_signals} bottom signals · ${c.signals.days_3plus_top} days with 3+ top flags · ${c.signals.days_3plus_bottom} days with 3+ bottom signals</div>
       <details style="margin-top:8px"><summary class="small">Every trade the app's rules made</summary><table>${R.app.events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")||`<tr><td class="muted small">No trades.</td></tr>`}</table></details>

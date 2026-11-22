@@ -548,9 +548,9 @@ def test_backtest_trim_and_trailing_stop():
     r = BT.simulate(d, 9, len(d) - 1, sig, LADDER, TH)
     sells = [e for e in r["events"] if e[3] < 0]
     assert len(sells) == 2 and r["trims"] == 1
-    close(-sells[0][4], 1.25, 1e-9)                       # 25% of the 5-coin trade bucket
+    close(-sells[0][4], 1.5, 1e-9)                        # 25% of the 6-coin trade bucket (40% core)
     assert sells[1][1] == "trailing stop" and sells[1][2] == 100.0   # 25%+ below the 200 peak
-    close(r["coins"], 5.0, 1e-9)                          # core untouched, trade bucket emptied
+    close(r["coins"], 4.0, 1e-9)                          # core untouched, trade bucket emptied
 
 
 def test_backtest_reanchor_after_trim():
@@ -582,6 +582,25 @@ def test_backtest_hybrid_never_overspends():
     assert [e[2] for e in rungs] == [90.0, 75.0, 60.0, 45.0]    # deep ladder, price ends at 44.1
     assert sum(e[3] for e in r["events"]) <= 500.0 + 0.1 and r["cash"] >= -1e-9   # (+ cent rounding in the log)
     close(r["coin_equiv"], r["coins"] + r["cash"] / d[-1]["c"], 1e-6)
+
+
+def test_backtest_take_profit_method():
+    # 10 coins at $100 (4 core, 6 trade). TPs at +10% / +20% of avg cost, 50% each; buy-backs 10% / 20% below the sale.
+    closes = [100.0] * 10 + [105.0, 115.0, 125.0, 108.0, 96.0]
+    highs = [100.0] * 10 + [105.0, 111.0, 121.0, 125.0, 108.0]
+    t0 = 1_700_000_000 - 1_700_000_000 % DAY
+    d = [{"t": t0 + i * DAY, "o": c, "h": h, "l": min(c, closes[i - 1] if i else c), "c": c, "v": 1.0}
+         for i, (c, h) in enumerate(zip(closes, highs))]
+    r = BT.simulate_tp(d, 9, len(d) - 1, lambda i: ([], []), TH, [10, 20], 0.5, BT.half2(10), LADDER)
+    ev = r["events"]
+    assert [(e[1], e[2]) for e in ev[:2]] == [("take-profit +10% hit", 110.0), ("take-profit +20% hit", 120.0)], ev
+    close(-ev[0][4], 3.0, 1e-9) and close(-ev[1][4], 3.0, 1e-9)        # 3 + 3 of the 6 trade coins
+    close(-ev[0][3], 3 * 110 * (1 - BT.FEE), 1e-2)
+    buys = [e for e in ev if e[3] > 0]
+    assert [e[2] for e in buys] == [108.0, 96.0], ev                     # 10% and 20% below the $120 sale
+    cash_at_sale = 500 + 3 * 110 * (1 - BT.FEE) + 3 * 120 * (1 - BT.FEE)
+    close(buys[0][3], cash_at_sale * 0.5, 0.02)
+    assert r["cash"] >= -1e-9 and r["trims"] == 2
 
 
 def test_backtest_benchmarks():
