@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "backtest"))
 import accumulate as acc  # noqa: E402
 import history  # noqa: E402
 import stress  # noqa: E402
+import myplan  # noqa: E402
 
 DAY = 86400
 
@@ -1047,6 +1048,27 @@ def test_history_parsers_and_cleaning():
     assert cs[0]["t"] == 20 * D and cs[-1]["t"] == 28 * D
     assert [c["t"] // D for c in cs] == list(range(20, 29))                     # short holes filled day by day
     assert cs[3]["c"] == 2 and cs[3]["v"] == 0.0                                # a filled day repeats the last close
+
+
+# =================================================================== your plan, replayed (myplan.py)
+def test_myplan_flat_price_matches_plain_buying():
+    s = st_series([(100, 100, 100, 100)] * 120)                       # Jan 1 .. Apr 30: 8 buy days
+    r = myplan.replay(s.d, amount=10.0)
+    assert r["buy_days"] == 8 and r["invested"] == 80.0 and r["sells"] == 0
+    close(r["coins"], r["dca_coins"], 1e-12)                          # nothing sold: same coins as plain buying
+    close(r["core"], 8 * 7 * (1 - myplan.TAKER) / 100, 1e-12)        # 70% to Core
+    close(r["value"], r["coins"] * 100, 0.01)
+
+
+def test_myplan_sell_then_monthly_rollover():
+    rows = [(100, 100, 100, 100)] * 40 + [(125, 130, 124, 125)] + [(125, 126, 124, 125)] * 80
+    s = st_series(rows)                                               # Jan 1 .. May 1
+    r = myplan.replay(s.d, amount=10.0)
+    assert r["sells"] >= 1                                            # the January lot took profit at +20%
+    assert r["rolled_over_cash"] > 0                                  # its buy-backs never filled -> rolled on Mar 1
+    assert r["cash"] == 0                                             # ... and was spent over the next 3 buy days
+    assert r["invested"] == 10.0 * r["buy_days"]
+    assert r["coins"] < r["dca_coins"]                                # sold at +20% and bought back higher: fewer coins
 
 
 # =================================================================== end to end

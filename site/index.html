@@ -146,7 +146,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "5.1.0";
+const APP_VERSION = "5.2.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -473,6 +473,20 @@ async function loadStress(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,
 function vLabel(k){const m=Object.fromEntries(k.split(" ").map(x=>x.split("=")));
   return `${m.lots==="buy"?"Each buy its own lot":m.lots==="month"?"One lot per month":"One average"} · ${m.core}% core${m.bull==="on"?" · bull mode":""}${m.stale==="on"?" · 120-day rule":""}`;}
 const sp=x=>x==null?"—":`<span class="${x>=0?"up":"dn"}">${pc(x)}</span>`;
+function renderMyPlan(){const MP=ST&&ST.my_plan;if(!MP||!MP.coins||!Object.keys(MP.coins).length)return "";
+  const rows=Object.entries(MP.coins).map(([k,r])=>{const diff=r.value/r.dca_value-1;return `<tr><td><b>${k}</b><div class="small muted">${r.from} → ${r.to}</div></td>
+    <td class="mono">${money(r.invested)}<div class="small muted">${r.buy_days} buy days</div></td>
+    <td class="mono">${qty(r.coins)} ${k}<div class="small muted">🔒 ${qty(r.core)} core · 🔁 ${qty(r.trade)} trade</div></td>
+    <td class="mono">${money(r.cash)}</td>
+    <td class="mono"><b>${money(r.value)}</b><div class="small ${r.value>=r.invested?"up":"dn"}">${pc((r.value/r.invested-1)*100)} on money in</div></td>
+    <td class="mono">${money(r.dca_value)}<div class="small muted">${qty(r.dca_coins)} ${k}</div></td>
+    <td class="mono ${diff>=0?"up":"dn"}">${pc(diff*100)}</td>
+    <td class="mono small">${r.sells} sells · ${r.buybacks} buy-backs<div class="muted">${qty(r.coins_to_core_from_trades)} ${k} won into Core</div></td></tr>`}).join("");
+  const T=MP.total;
+  return `<div class="card" style="margin-top:14px;border-color:#2f7a55"><b>💡 Your plan, replayed on real prices</b> <span class="small muted">· $${MP.amount} per coin on the ${MP.days.map(d=>d+(d===1?"st":d===2?"nd":d===3?"rd":"th")).join(" and ")} · ${MP.core_pct}% Core · Trade lots +20/+40%, buy-backs −20/−40%, monthly re-baseline, bull mode · real fees</span>
+    <table style="margin-top:8px"><tr><th>Coin</th><th>Put in</th><th>Coins now</th><th>Cash waiting</th><th>Value today</th><th>Plain buying instead</th><th>Plan vs plain</th><th>Trading</th></tr>${rows}
+    ${T?`<tr><td><b>Total</b></td><td class="mono"><b>${money(T.invested)}</b></td><td></td><td class="mono">${money(T.cash)}</td><td class="mono"><b>${money(T.value)}</b></td><td class="mono">${money(T.dca_value)}</td><td></td><td></td></tr>`:""}</table>
+    <div class="small muted" style="margin-top:6px">Value today = coins × today's price + cash waiting. Past results don't predict future ones. SOL history on Coinbase starts in mid-2021, so it gets a shorter run.</div></div>`;}
 function renderStress(){if(!ST&&!ST_ERR){loadStress();return `<div class="card" style="margin-top:14px">Loading stress test…</div>`;}
   if(!ST)return `<div class="card muted" style="margin-top:14px">No stress test published yet (${esc(ST_ERR)}). It runs once a day on GitHub.</div>`;
   const A=ST.assumptions||{},O=ST.overall||[],D=ST.deep||{};
@@ -529,6 +543,7 @@ function renderBacktest(){if(!BT&&!BT_ERR){loadBacktest();return `<div class="ca
   let h=`<div class="card"><b>What would the rules have done?</b> <span class="small muted">· last ${BT.months} months · calculated ${new Date(BT.generated_at).toLocaleString()} · v${esc(BT.version)}</span>
     <p class="small muted" style="margin:8px 0 0">Start: ${esc(A.start||"")}. Fees: ${esc(A.fees||"")}. ${esc(A.fills||"")}. Not tested: ${esc(A.not_tested||"")}.<br>
     <b>Score = total value in coins</b>: coins held plus any cash converted at the final price, so selling high and holding cash counts fairly. <b>Ladder moves after trims</b> = after each trim the ladder restarts from the trim price, using the cash on hand. <b>Half monthly + half deep ladder</b> = half the reserve bought monthly, half on a −10/−25/−40/−55% ladder that also moves after trims; no buy-early.</p></div>`;
+  h=renderMyPlan()+h;
   h+=renderStress();
   h+=renderAccumulate();
   if(BT.overall&&BT.overall.length){

@@ -4,6 +4,13 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 5.2.0 · 2026-11-22
+**"Your plan, replayed on real prices."** A new card at the top of the Backtest tab.
+- Replays the exact v5.1 plan: $30 per coin on the 1st and 15th, 70% Core, monthly Trade lots at +20/+40%, buy-backs at −20/−40%, the monthly re-baseline, bull mode, real fees, and the $5 minimum order. ETH over 10 years, SOL since Coinbase listed it (mid-2021).
+- Shows money put in, coins now (Core / Trade), cash waiting, value today, and the same money bought plainly (no selling) for comparison.
+- Runs in the daily stress-test step (`backtest/myplan.py`). No workflow change.
+- 2 new tests (73 total): a flat price gives exactly the same coins as plain buying; a sale whose buy-backs never fill rolls over at the new month and is fully spent over the next 3 buy days.
+
 ## 5.1.0 · 2026-11-22
 **Monthly re-baseline.** Every dollar now works off the current month's prices.
 - Buy-back orders last until the end of the month. On the new month, any unfilled ones show a **🧹 New month · re-baseline** mission: cancel them on Kraken and tap Done.

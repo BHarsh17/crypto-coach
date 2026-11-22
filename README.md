@@ -1,6 +1,6 @@
 # Crypto Coach
 
-**Version:** see `VERSION` (currently 5.1.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+**Version:** see `VERSION` (currently 5.2.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
 
 **Your rules, not your gut.** Crypto Coach runs a simple accumulation plan, the one a 10-year stress test supports (see `STRATEGY.md`), and keeps you from panic-selling. You place every trade yourself on Kraken; the app tells you what your plan says and keeps the books.
 
@@ -98,7 +98,7 @@ There are two parts. One does the thinking, the other shows it to you.
 
 Each run of the workflow (`.github/workflows/watch.yml`) does this, in order:
 
-1. **Self-test** (`tests/test_watch.py`, 71 checks in three layers):
+1. **Self-test** (`tests/test_watch.py`, 73 checks in three layers):
    - **Reference values:** RSI against a published worked example and a hand-worked one, plus averages, percentages and funding maths.
    - **Cross-checks:** a second, independently written RSI and average compared on hundreds of random price series. They must agree to 8 decimal places.
    - **Scenarios:** every flag, bottom signal, ladder rung and alert tested right at its on/off boundary, the news counting and hype maths, and two full offline runs back to back (checking nothing is double-counted).
@@ -351,7 +351,7 @@ The top of the Backtest tab. It runs the v5 draft rules (`STRATEGY.md`) on up to
 **No AI calculates any number or sets any flag.** Everything is plain, tested arithmetic on Kraken's data, fixed keyword rules on fixed news outlets, and CoinGecko's trending list.
 
 **On GitHub (watcher):**
-- **Maths self-test before every run** (71 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtests). If it fails, nothing is published.
+- **Maths self-test before every run** (73 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtests). If it fails, nothing is published.
 - **One engine for live and backtest:** the orders you're alerted on come from the same code (`watcher/engine.py`) the backtest replays, so what you were shown in testing is what runs live.
 - **News safety:** headlines are de-duplicated across runs, never counted twice, and articles dated in the future are treated as "now". Only web links (`http`/`https`) are kept from feeds. If every news feed fails, flag 5 stays off for that run rather than guessing.
 - **Bad data is rejected,** never used. A coin is rejected if Kraken returns fewer than 30 candles, candles out of time order, an impossible candle (low above the open or close, or high below them), or a latest candle that's too old.

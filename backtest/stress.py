@@ -665,7 +665,19 @@ def main():
                             "score": round(r["score"], 8), "dca": round(dca(s_, a_, z_)["score"], 8),
                             "core": round(r["core"], 8), "waiting": round(r["waiting"], 2), "tax": round(r["tax"], 2),
                             "events": r["events"]}
+    # your plan, replayed: $30 per coin on the 1st and 15th, as far back as 10 years
+    import myplan
+    mp = {"amount": 30.0, "days": [1, 15], "core_pct": 70, "coins": {}}
+    for sym in ("ETH", "SOL"):
+        if sym in series:
+            d_ = series[sym].d
+            r = myplan.replay(d_, amount=30.0, start=myplan.start_index(d_, 10))
+            mp["coins"][sym] = {k: (round(v, 8) if isinstance(v, float) else v) for k, v in r.items()}
+    if mp["coins"]:
+        mp["total"] = {k: round(sum(c[k] for c in mp["coins"].values()), 2) for k in ("invested", "value", "dca_value", "cash")}
+    doc_myplan = mp
     doc = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "version": watch.VERSION,
+           "my_plan": doc_myplan,
            "seconds": round(time.time() - t0, 1),
            "assumptions": {
                "money": f"${START_USD:,.0f} to start, ${MONTHLY_USD:,.0f} on the 1st of each month after, per coin",
