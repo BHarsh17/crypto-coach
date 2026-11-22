@@ -505,6 +505,64 @@ def test_news_flags_boundaries():
     assert "unavailable" in f(tok=False)["fomo"]["detail"]
 
 
+# =================================================================== backtest engine
+sys.path.insert(0, os.path.join(HERE, "..", "backtest"))
+import backtest as BT  # noqa: E402
+
+
+def bt_series(closes, lows=None):
+    t0 = 1_700_000_000 - 1_700_000_000 % DAY
+    return [{"t": t0 + i * DAY, "o": c, "h": c, "l": (lows[i] if lows else c), "c": c, "v": 1.0} for i, c in enumerate(closes)]
+
+
+def test_backtest_ladder_fills_at_rung_prices():
+    closes = [100.0] * 10 + [100 - 0.5 * k for k in range(1, 101)]          # slides from 100 to 50
+    d = bt_series(closes)
+    r = BT.simulate(d, 9, len(d) - 1, lambda i: ([], []), LADDER, TH, buy_early=False)
+    buys = [e for e in r["events"] if e[3] > 0]
+    assert [e[2] for e in buys] == [90.0, 80.0, 70.0, 60.0], buys            # anchor 100, rungs -10..-40%
+    assert all(abs(e[3] - 125.0) < 1e-9 for e in buys)                      # 25% of $500 each
+    want = 1000 / 100 + sum(125 * (1 - BT.FEE) / p for p in (90, 80, 70, 60))
+    close(r["coins"], want, 1e-5)
+    close(r["value"], want * 50.0 + r["cash"], 0.02)
+    assert r["cash"] == 0.0
+
+
+def test_backtest_buy_early_and_half_rungs():
+    closes = [100.0] * 10 + [95.0] * 5
+    d = bt_series(closes)
+    sig = lambda i: ([], ["a", "b", "c"] if i == 12 else [])                 # noqa: E731  3 bottom signals on one day
+    r = BT.simulate(d, 9, len(d) - 1, sig, LADDER, TH)
+    assert [(e[1][:9], e[2], e[3]) for e in r["events"]] == [("buy early", 95.0, 125.0)]
+    r = BT.simulate(d, 9, len(d) - 1, sig, LADDER, TH, boost_fraction=0.5)
+    assert r["events"][0][3] == 62.5                                        # half a rung
+    d2 = bt_series(closes + [85.0])                                         # then the price reaches rung 1 (90)
+    r = BT.simulate(d2, 9, len(d2) - 1, sig, LADDER, TH, boost_fraction=0.5)
+    assert [(e[2], e[3]) for e in r["events"]] == [(95.0, 62.5), (90.0, 62.5)]   # the other half fills at the rung
+
+
+def test_backtest_trim_and_trailing_stop():
+    closes = [100.0] * 10 + [200.0, 200.0, 100.0]
+    d = bt_series(closes)
+    sig = lambda i: (["vertical", "stretched", "rsi"] if i == 10 else [], [])  # noqa: E731
+    r = BT.simulate(d, 9, len(d) - 1, sig, LADDER, TH)
+    sells = [e for e in r["events"] if e[3] < 0]
+    assert len(sells) == 2 and r["trims"] == 1
+    close(-sells[0][4], 1.25, 1e-9)                       # 25% of the 5-coin trade bucket
+    assert sells[1][1] == "trailing stop" and sells[1][2] == 100.0   # 25%+ below the 200 peak
+    close(r["coins"], 5.0, 1e-9)                          # core untouched, trade bucket emptied
+
+
+def test_backtest_benchmarks():
+    d = bt_series([100.0] * 10 + [50.0] * 400)
+    lump = BT.simple(d, 9, len(d) - 1, "lump")
+    close(lump["coins"], 10 + 500 * (1 - BT.FEE) / 100, 1e-9)
+    dca = BT.simple(d, 9, len(d) - 1, "dca")
+    assert len(dca["events"]) == round((len(d) - 10) / 30.4375) and abs(dca["cash"]) < 1e-6
+    cash = BT.simple(d, 9, len(d) - 1, "cash")
+    assert cash["coins"] == 10 and cash["value"] == 10 * 50 + 500
+
+
 # =================================================================== versions
 def test_versions_match():
     root = os.path.join(HERE, "..")

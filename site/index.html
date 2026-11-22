@@ -135,6 +135,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
     <button data-t="reserve">💰 Dip reserve</button>
     <button data-t="journal">📓 Journal</button>
     <button data-t="news">📰 News</button>
+    <button data-t="backtest">🧪 Backtest</button>
     <button data-t="setup">⚙️ Setup</button>
   </nav>
   <main id="view"></main>
@@ -145,7 +146,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "3.0.0";
+const APP_VERSION = "3.1.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -347,6 +348,30 @@ function renderNews(){if(!DATA)return `<div class="card">Loading…</div>`;const
   return h;}
 
 const XP_HELP=`<div class="card" style="margin-bottom:14px"><b>How XP works</b><p class="small muted">+10 daily check-in · +15 core buy · +50 buying a ladder rung (when price reaches it, or early on 3+ bottom signals) · +60 trimming on flags or following your trailing stop · +100 finishing a 24h cooldown instead of panic-selling · +5 logging a skip honestly · −30 off-plan trade (and your streak resets). XP rewards following your rules, not profit. Profit is the market's job; discipline is yours.</p></div>`;
+let BT=null,BT_ERR=null;
+async function loadBacktest(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,"");const r=await fetch(base+"backtest.json?t="+Date.now(),{cache:"no-store"});
+  if(!r.ok)throw new Error("HTTP "+r.status);BT=await r.json();BT_ERR=null;}catch(e){BT_ERR=String(e.message||e);}if(TAB==="backtest")render();}
+const BT_NAMES={app:"Crypto Coach (as built)",ladder_only:"Ladder only (no buy-early)",proposed:"Proposed tweaks",dca:"Monthly DCA",lump:"All-in on day 1",cash:"Keep the cash"};
+function renderBacktest(){if(!BT&&!BT_ERR){loadBacktest();return `<div class="card">Loading backtest…</div>`;}
+  if(!BT)return `<div class="card muted">No backtest published yet (${esc(BT_ERR)}). It's calculated by the watcher once a day; check back after the next run.</div>`;
+  const A=BT.assumptions||{};
+  let h=`<div class="card"><b>What would the rules have done?</b> <span class="small muted">· last ${BT.months} months · calculated ${new Date(BT.generated_at).toLocaleString()} · v${esc(BT.version)}</span>
+    <p class="small muted" style="margin:8px 0 0">Start: ${esc(A.start||"")}. Fees: ${esc(A.fees||"")}. ${esc(A.fills||"")}. Not tested: ${esc(A.not_tested||"")}.<br>
+    <b>Score = coins at the end</b> (your goal is accumulating). Value is shown at the final price. <b>Proposed tweaks</b> = 200-week signal only below the average, buy-early spends half a rung, ladder at −10/−25/−40/−55%.</p></div>`;
+  for(const c of BT.coins){
+    if(c.error){h+=`<div class="card" style="margin-top:14px"><b>${esc(c.symbol)}</b> <span class="muted small">failed: ${esc(c.error)}</span></div>`;continue;}
+    const R=c.results,best=Math.max(...Object.values(R).map(r=>r.coins)),dca=R.dca.coins;
+    h+=`<div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between"><b style="font-size:18px">${esc(c.symbol)}</b>
+      <span class="small mono">${c.start} → ${c.end} · ${money(c.start_price)} → ${money(c.end_price)} <span class="${c.change_pct>=0?"up":"dn"}">${pc(c.change_pct)}</span> · low ${money(c.low)} · high ${money(c.high)}</span></div>
+      <table style="margin-top:8px"><tr><th>Strategy</th><th>Coins at end</th><th>vs monthly DCA</th><th>Value</th><th>Avg buy price</th><th>Trims</th></tr>
+      ${Object.keys(BT_NAMES).filter(k=>R[k]).map(k=>{const r=R[k];return `<tr style="${r.coins===best?"background:#0f1f1a":""}"><td>${BT_NAMES[k]}${r.coins===best?" 🏆":""}</td><td class="mono">${qty(r.coins)}</td>
+        <td class="mono ${r.coins>=dca?"up":"dn"}">${k==="dca"?"—":pc((r.coins/dca-1)*100)}</td><td class="mono">${money(r.value)}${r.cash>0.5?` <span class="muted small">(incl. ${money(r.cash)} cash)</span>`:""}</td>
+        <td class="mono">${r.avg_buy_price?money(r.avg_buy_price):"—"}</td><td class="mono">${k==="app"||k==="ladder_only"||k==="proposed"?r.trims:"—"}</td></tr>`}).join("")}</table>
+      <div class="small muted" style="margin-top:6px">Signals over the period: max ${c.signals.max_top_flags} top flags, max ${c.signals.max_bottom_signals} bottom signals · ${c.signals.days_3plus_top} days with 3+ top flags · ${c.signals.days_3plus_bottom} days with 3+ bottom signals</div>
+      <details style="margin-top:8px"><summary class="small">Every trade the app's rules made</summary><table>${R.app.events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")||`<tr><td class="muted small">No trades.</td></tr>`}</table></details>
+      <details><summary class="small">Every trade with the proposed tweaks</summary><table>${R.proposed.events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")||`<tr><td class="muted small">No trades.</td></tr>`}</table></details></div>`;}
+  return h+`<p class="small muted">Past results don't predict future ones. This shows how the rules behaved on real prices, nothing more.</p>`;}
+
 function renderJournal(){if(!S.log.length)return XP_HELP+`<div class="card muted">Nothing logged yet. Your first check-in starts the journal.</div>`;
   return XP_HELP+`<div class="card"><table><tr><th>When</th><th>Coin</th><th>What happened</th><th>XP</th></tr>${S.log.map(l=>`<tr><td class="small muted">${new Date(l.ts).toLocaleString()}</td><td>${esc(l.coin)}</td><td>${esc(l.text)}</td><td class="mono ${l.xp>=0?"up":"dn"}">${l.xp>=0?"+":""}${l.xp}</td></tr>`).join("")}</table></div>`;}
 
@@ -362,7 +387,7 @@ function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S
     <div class="btns"><button class="b" onclick="copyBackup()">Copy backup</button><button class="b" onclick="restore()">Restore from backup</button><button class="b warn" onclick="wipe()">Reset everything</button></div></div>`;}
 
 function render(){renderHeader();const v=document.getElementById("view");
-  v.innerHTML=TAB==="missions"?renderMissions():TAB==="reserve"?renderReserve():TAB==="journal"?renderJournal():TAB==="news"?renderNews():renderSetup();
+  v.innerHTML=TAB==="missions"?renderMissions():TAB==="reserve"?renderReserve():TAB==="journal"?renderJournal():TAB==="news"?renderNews():TAB==="backtest"?renderBacktest():renderSetup();
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB));}
 
 /* ---------- actions ---------- */

@@ -4,6 +4,9 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 3.1.0 · 2026-11-22
+- **Backtest.** The watcher now replays the rules on the last 18 months of real Kraken prices for every coin in `coins.json`, plus BTC, once a day. New **🧪 Backtest** tab compares: the app as built, ladder only, proposed tweaks, monthly DCA, all-in on day 1, and keeping the cash. It never blocks the live signals; if it fails, the rest of the run carries on.
+
 ## 3.0.0 · 2026-11-22
 - **Buy side rebuilt to mirror the sell side.** Bottom signals go from 3 to **6**, each the mirror image of a top flag: Freefall, Stretched below, Oversold RSI (daily ≤ 25 or weekly ≤ 30), Shorts crowded (negative funding), Capitulation volume, Near 200-week average.
 - **New rule: buy early.** At 3 bottom signals, buy your next ladder rung now instead of waiting for the price to reach it; at 4–5, the next 2 rungs in total; at 6, the next 3. It never spends more than that coin's ladder, and a new ladder anchor resets it.

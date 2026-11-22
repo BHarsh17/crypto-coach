@@ -1,6 +1,6 @@
 # Crypto Coach
 
-**Version:** see `VERSION` (currently 3.0.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+**Version:** see `VERSION` (currently 3.1.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
 
 **Your rules, not your gut.** Crypto Coach watches your coins, checks them against rules you set ahead of time, and tells you what those rules say to do: hold, buy a dip rung, trim a pump, or follow a stop. You still make every trade. It just makes sure the plan gets followed instead of the panic.
 
@@ -90,7 +90,8 @@ Each run of the workflow (`.github/workflows/watch.yml`) does this, in order:
    - Write the coin's chart file (`candles/SYMBOL.json`).
 4. **News step:** read the 7 fixed news feeds and CoinGecko's trending list, match headlines to your coins, update the hype meter, and set flags 5–6 (news priced in, social FOMO).
 5. **Send Telegram alerts** for anything that changed since last run.
-6. **Publish** `index.html` (the app) + `signals.json` + `candles/` to GitHub Pages.
+6. **Backtest** (`backtest/backtest.py`, once a day): replays the rules on 18 months of Kraken prices and writes `backtest.json`. If it fails, the run carries on without it.
+7. **Publish** `index.html` (the app) + `signals.json` + `candles/` to GitHub Pages.
 
 A run takes about 30 seconds. On a public repo it's free with no limits.
 
@@ -118,6 +119,7 @@ The app is one web page (`site/index.html`). Open it at **https://bharsh17.githu
 
 - **Missions tab:** one card per coin, showing the live price, a chart, **one mission** (what your rules say right now), the flags, the bottom signals, the dip ladder and your buckets.
 - **News tab:** the hype meter and every headline the watcher matched to your coins (see [The News tab](#the-news-tab)).
+- **Backtest tab:** what these exact rules would have done over the last 18 months of real prices, for each coin plus BTC, compared with monthly DCA, buying everything on day 1, and keeping cash. Recalculated once a day.
 - **Dip reserve tab:** your cash pool for buying dips, how much each coin has used, and a **list of limit orders to place** on your exchange.
 - **Journal tab:** how XP works, then everything you've logged, with XP.
 - **Setup tab:** your holdings, average cost, dip reserve and backup.
