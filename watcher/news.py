@@ -222,11 +222,16 @@ def coin_metrics(st, sym, now, th, trending_rank):
     mine = [i for i in st["items"] if sym in i["coins"]]
     catalysts = [i for i in mine if i["ts"] >= now - 7 * DAY and ("catalyst" in i["tags"] or "official" in i["tags"])]
     hype3 = [i for i in mine if i["ts"] >= now - 3 * DAY and "hype" in i["tags"]]
+    week = [i for i in mine if i["ts"] >= now - 7 * DAY]
+    positive7 = sum(1 for i in week if {"catalyst", "hype", "official"} & set(i["tags"]))
+    risk7 = sum(1 for i in week if "risk" in i["tags"])
     return {
         "mentions_3d": m3, "baseline_per_day": None if avg is None else round(avg, 3),
         "baseline_days": n_base, "spike_ratio": None if ratio is None else round(ratio, 2), "spike": spike,
         "catalysts_7d": len(catalysts), "catalyst_titles": [i["title"] for i in catalysts[:3]],
         "hype_3d": len(hype3), "hype_titles": [i["title"] for i in hype3[:3]],
+        "positive_7d": positive7, "risk_7d": risk7,
+        "risk_titles": [i["title"] for i in week if "risk" in i["tags"]][:3],
         "trending_rank": trending_rank,
         "daily14": [[day_shift(today, -k), daily.get(day_shift(today, -k), 0)] for k in range(13, -1, -1)],
     }

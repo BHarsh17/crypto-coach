@@ -27,6 +27,7 @@ import accumulate as acc  # noqa: E402
 import history  # noqa: E402
 import stress  # noqa: E402
 import myplan  # noqa: E402
+import radar  # noqa: E402
 
 DAY = 86400
 
@@ -1130,6 +1131,130 @@ def test_buy_models_rules():
     assert c2["cash"] < 1                                             # the reserve was spent in the crash
     w = myplan.buy_model(flat, 0, "weekly_same")
     assert w["buys"] == sum(1 for x in flat if myplan._d(x["t"]).weekday() == 0)
+
+
+# =================================================================== v6 radar
+def test_radar_pivots_traditional():
+    rows = [(100, 100, 100, 100)] * 31
+    rows[10] = (100, 110, 90, 100)                                    # January H 110, L 90, C 100
+    rows += [(100, 100, 100, 100)] * 5                                # into February
+    piv = radar.pivots(st_series(rows).d)
+    assert piv["month"] == "2025-02" and piv["from"] == "2025-01"
+    for k, v in {"P": 100, "R1": 110, "S1": 90, "R2": 120, "S2": 80}.items():
+        close(piv[k], v, 1e-12)
+
+
+def test_radar_level_breaks_once_per_month_on_closes():
+    piv = {"month": "2025-02", "P": 100, "R1": 110, "S1": 90, "R2": 120, "S2": 80}
+    t0 = 1738368000                                                   # 2025-02-01 00:00 UTC
+    c = lambda k, close_: {"t": t0 + k * 14400, "o": close_, "h": close_, "l": close_, "c": close_, "v": 1}
+    h4 = [c(0, 95), c(1, 92), c(2, 89), c(3, 91), c(4, 88), c(5, 85)]   # last candle still forming
+    done = set()
+    br = radar.level_breaks(h4, piv, 0, done)
+    assert [b[0] for b in br] == ["S1:down", "S1:up"]                 # 92 -> 89 crosses S1 down, 89 -> 91 back up
+    close(br[0][3], 89, 1e-12)
+    assert radar.level_breaks(h4, piv, 0, done) == []                 # each level/direction once a month
+    h4b = [c(0, 95), c(1, 79), c(2, 79)]
+    assert sorted(b[0] for b in radar.level_breaks(h4b, piv, 0, set())) == ["S1:down", "S2:down"]   # one candle through both
+    assert radar.level_breaks(h4, piv, t0 + 10 * 14400, set()) == []  # nothing new since the last run
+
+
+def test_radar_pump_meter_and_dump():
+    s0, l0, _ = radar.pump_meter(0, 0, 100, 100, 100, 50, 1, 0, 0, False, 0, None)
+    assert (s0, l0) == (0, "Calm")
+    s1, l1, parts = radar.pump_meter(70, 200, 150, 100, 90, 90, 4, 0.001, 40, True, 5, 1)
+    assert (s1, l1) == (100, "Extreme") and all(v == 1.0 for v in parts.values())
+    s2, l2, _ = radar.pump_meter(30, 40, 115, 100, 100, 72, 2, 0, 0, False, 1, None)
+    close(s2, round(0.5 * 30 + max(15 / 35, 0.3) * 20 + 0.48 * 15 + 0.5 * 10 + (1 / 3) * 10), 0)
+    assert l2 == "Heating"
+    rows = [(100, 100, 100, 100)] * 40 + [(100 * 1.07 ** k, 100 * 1.07 ** k, 100 * 1.07 ** k, 100 * 1.07 ** k) for k in range(1, 8)]
+    peak = rows[-1][1]
+    d_up = st_series(rows).d
+    assert radar.dump_watch(d_up)["on"] is False and radar.dump_watch(d_up)["pumped"]
+    d_dn = st_series(rows + [(peak * 0.75,) * 4] * 3).d
+    w = radar.dump_watch(d_dn)
+    assert w["on"] and close(w["off_peak_pct"], -25.0, 0.1) is None
+
+
+def test_radar_tone_and_fear_greed():
+    assert radar.news_tone(0, 1)["label"] == "Quiet"
+    assert radar.news_tone(5, 1)["label"] == "Optimistic" and radar.news_tone(1, 5)["label"] == "Pessimistic"
+    assert radar.news_tone(3, 2)["label"] == "Mixed"
+    fg = radar.parse_fear_greed({"data": [{"value": "11", "value_classification": "Extreme Fear"}] + [{"value": "30"}] * 7})
+    assert fg == {"value": 11, "label": "Extreme Fear", "week_ago": 30}
+    assert radar.parse_fear_greed({"data": []}) is None
+
+
+def test_radar_alerts_and_buy_day_reminder():
+    from zoneinfo import ZoneInfo
+    s = {"symbol": "SOL", "price": 70.0, "change_7d": 55, "alerted": {},
+         "pump": {"score": 72, "label": "Pumping"}, "dump": {"on": False},
+         "level_breaks": [{"key": "S2:down", "level": "S2", "price": 55.16, "close": 54.9, "ts": 0}]}
+    assert watch.radar_alerts(s, first_run=True) == []                 # first run: quiet, remembers the state
+    s["alerted"] = {"pump_tier": 1}
+    msgs = watch.radar_alerts(s, first_run=False)
+    assert len(msgs) == 2 and "broke below S2" in msgs[0][0] and "extra buy-in" in msgs[0][0] and "PUMP WATCH" in msgs[1][0]
+    s["level_breaks"] = []
+    assert watch.radar_alerts(s, first_run=False) == []                # same tier again: silence
+    s["dump"] = {"on": True, "off_peak_pct": -25.0, "peak": 93.0}
+    assert "DUMP" in watch.radar_alerts(s, first_run=False)[0][0]
+    tz = ZoneInfo("America/Vancouver")
+    plan = {"days": [1, 15], "remind_hour": 9, "timezone": "America/Vancouver"}
+    coins = [{"symbol": "ETH"}, {"symbol": "SOL"}]
+    assert watch.buy_day_reminder(coins, plan, {}, now=datetime(2026, 12, 1, 8, 0, tzinfo=tz).timestamp()) is None
+    r = watch.buy_day_reminder(coins, plan, {}, now=datetime(2026, 12, 1, 9, 5, tzinfo=tz).timestamp())
+    assert r[0][1] == 4 and "BUY DAY · ETH, SOL" in r[0][0] and r[1] == "2026-12-01"
+    assert watch.buy_day_reminder(coins, plan, {"reminded": "2026-12-01"}, now=datetime(2026, 12, 1, 15, 0, tzinfo=tz).timestamp()) is None
+    assert watch.buy_day_reminder(coins, plan, {}, now=datetime(2026, 12, 2, 9, 5, tzinfo=tz).timestamp()) is None
+
+
+def test_take_profit_window_reasons_and_alert_once():
+    piv = {"month": "2026-11", "P": 100, "R1": 110, "S1": 90, "R2": 120, "S2": 80}
+    calm = radar.take_profit_window(100, 2, 100, 50, piv, {"ok": True, "value": 40}, {"score": 5, "label": "Calm"}, {}, False, None)
+    assert calm["on"] is False and calm["reasons"] == []
+    two = radar.take_profit_window(115, 30, 100, 60, piv, None, {"score": 30, "label": "Heating"}, {}, False, None)
+    assert two["on"] is False and len(two["reasons"]) == 2            # +30% in 7d, above R1: not enough yet
+    hot = radar.take_profit_window(130, 40, 100, 82, piv, {"ok": True, "value": 80, "label": "Extreme Greed"},
+                                   {"score": 75, "label": "Pumping"}, {"hype_3d": 4}, True, 2, flags_on=3)
+    assert hot["on"] and hot["strength"] == "Strong" and any("R2" in r for r in hot["reasons"])
+    assert any("RSI 82" in r for r in hot["reasons"]) and any("30% above" in r for r in hot["reasons"])
+    s = {"symbol": "SOL", "price": 130.0, "alerted": {"pump_tier": 2}, "pump": {"score": 75, "label": "Pumping"},
+         "dump": {"on": False}, "level_breaks": [], "take_profit": hot, "news": {"hype_titles": ["SOL soars on ETF news"]}}
+    msgs = watch.radar_alerts(s, first_run=False)
+    tp = [m for m, _ in msgs if "TAKE-PROFIT WINDOW" in m]
+    assert len(tp) == 1 and "Why:" in tp[0] and "SOL soars on ETF news" in tp[0] and "keep it small" in tp[0]
+    assert not any("TAKE-PROFIT" in m for m, _ in watch.radar_alerts(s, first_run=False))   # once per window
+    s["take_profit"], s["pump"] = calm, {"score": 10, "label": "Calm"}
+    watch.radar_alerts(s, first_run=False)                            # window over
+    s["take_profit"], s["pump"] = hot, {"score": 75, "label": "Pumping"}
+    assert any("TAKE-PROFIT" in m for m, _ in watch.radar_alerts(s, first_run=False))       # the next window alerts again
+
+
+def test_myplan_rsi_matches_watcher_rsi():
+    rng = random.Random(9)
+    closes, px = [], 100.0
+    for _ in range(300):
+        px *= math.exp(rng.gauss(0, 0.03))
+        closes.append(px)
+    rs = myplan.rsi_series(closes)
+    for k in (20, 100, 299):
+        close(rs[k], watch.rsi(closes[:k + 1]), 1e-9)                # two independent RSI codes agree
+
+
+def test_hold_and_trim_and_horizons():
+    flat = st_series([(100, 100, 100, 100)] * 400).d
+    t = myplan.hold_and_trim(flat, 0)
+    close(t["coins"], myplan.buy_model(flat, 0, "dca")["coins"], 1e-12)
+    assert t["trims"] == 0                                            # no window, nothing sold
+    rows = [(100, 100, 100, 100)] * 60 + [(100 * 1.06 ** k,) * 4 for k in range(1, 12)] + [(190, 190, 190, 190)] * 120
+    d = st_series(rows).d
+    t2 = myplan.hold_and_trim(d, 0)
+    assert t2["trims"] >= 1 and t2["cash"] == 0                       # trimmed in the run-up, cash redeployed later
+    hz = myplan.horizons({"AAA": flat, "BBB": d}, years=(1, 5))
+    a1 = hz["1y"]["coins"]["AAA"]
+    assert a1["short"] is False and a1["invested"] == 30.0 * sum(1 for x in flat[myplan.start_index(flat, 1):] if myplan._d(x["t"]).day in (1, 15))
+    assert hz["5y"]["coins"]["AAA"]["short"] is True                  # only ~1 year of data: flagged
+    close(hz["1y"]["total"]["value"], sum(c["value"] for c in hz["1y"]["coins"].values()), 0.05)
 
 
 # =================================================================== end to end

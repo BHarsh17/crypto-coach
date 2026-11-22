@@ -678,6 +678,20 @@ def main():
             mp["coins"][sym]["pivot_wait"] = rnd(myplan.pivot_hold(d_, amount=30.0, start=st_, fallback=False))
             mp["coins"][sym]["pivot_fallback"] = rnd(myplan.pivot_hold(d_, amount=30.0, start=st_, fallback=True))
             mp["coins"][sym]["models"] = {m: rnd(myplan.buy_model(d_, st_, m, amount=30.0)) for m in myplan.BUY_MODELS}
+    # 5- and 10-year buy + hold totals for more coins (+ the "act on take-profit windows" test)
+    hz_series = {}
+    for sym in ("ETH", "SOL", "XRP", "QNT", "BTC", "LTC", "ETC"):
+        try:
+            if sym in series:
+                hz_series[sym] = series[sym].d
+            elif a.offline:
+                hz_series[sym] = synthetic(sym)
+            else:
+                import history
+                hz_series[sym] = history.load(sym)[0]
+        except Exception as e:  # noqa: BLE001
+            print(f"horizons: {sym} skipped: {e}", file=sys.stderr)
+    mp["horizons"] = myplan.horizons(hz_series, amount=30.0)
     if mp["coins"]:
         mp["total"] = {k: round(sum(c[k] for c in mp["coins"].values()), 2) for k in ("invested", "value", "dca_value", "cash")}
     doc_myplan = mp

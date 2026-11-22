@@ -146,7 +146,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "5.4.0";
+const APP_VERSION = "6.1.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -198,7 +198,7 @@ function flagsOn(c){return Object.keys(FLAG_INFO).filter(k=>flagOn(c,k));}
 function tierOf(n){return n<3?0:n===3?1:n<=5?2:3;}
 /* ---------- v5 plan: scheduled buys, 70/30 split, monthly lots, +20/+40 sells, -20/-40 buy-backs ---------- */
 const FEE=0.0025, TP=[20,40], BB=[20,40], MIN_ORDER=5, TINY=1e-12;
-function P(){S.plan=S.plan||{days:[1,15],core:70,amounts:{},bull:true};if(!S.plan.amounts)S.plan.amounts={};return S.plan;}
+function P(){S.plan=S.plan||{days:[1,15],core:100,amounts:{},bull:true};if(!S.plan.amounts)S.plan.amounts={};return S.plan;}
 function M(sym){const me=C(sym);
   if(!me.v5){const old=(me.core||0)+(me.trade||0);me.v5={lots:[],sales:[],periods:{},snooze:{},nextId:1,migrated:old>0?old:0};
     me.core=old;me.trade=0;save();}   // v4 holdings become Core: you were holding them, nothing is sold
@@ -267,7 +267,12 @@ function directive(c){const sym=c.symbol,v=M(sym),px=c.price,now=Date.now();
     return {k:"zone",title:"🧹 NEW MONTH · re-baseline",act:"roll",text:`Cancel your ${n} unfilled ${sym} buy-back order${n>1?"s":""} on Kraken. Its ${money(usd)} joins your next ${ROLL_DAYS} buy days at this month's prices.`,why:"Old buy-back prices may never come back. This keeps every dollar working off the current baseline."};}
   if(!planAmt(sym)&&!v.lots.length&&!(C(sym).core>0)&&!rollExtra(sym))return {k:"wait",title:"👋 Not started",text:`Set how much to buy on each buy day for ${sym} in Setup.`,why:`Buy days: ${planDays().map(d=>d+(d===1?"st":d===2?"nd":d===3?"rd":"th")).join(" and ")} of the month.`};
   if(buyDue(sym)){const a=planAmt(sym),cs=P().core/100,e=rollExtra(sym);
-    return {k:"buy",title:"🗓 BUY DAY",act:"buyday",text:`Buy ${money(a+e)} of ${sym}: ${money(a*cs)} to Core, ${money(a*(1-cs)+e)} to the ${lotName({month:monthKey()})} Trade lot${e?` (includes ${money(e)} rolled-over sale cash)`:""}.`,why:"Scheduled buy. Don't wait for a dip: over 10 years, timing didn't beat the schedule."};}
+    return {k:"buy",title:"🗓 BUY DAY",act:"buyday",text:trading()?`Buy ${money(a+e)} of ${sym}: ${money(a*cs)} to Core, ${money(a*(1-cs)+e)} to the ${lotName({month:monthKey()})} Trade lot${e?` (includes ${money(e)} rolled-over sale cash)`:""}.`:`Buy ${money(a+e)} of ${sym} and hold. Whatever the price; don't time it.`,why:"Scheduled buy. Don't wait for a dip: over 10 years, timing didn't beat the schedule."};}
+  if(c.dump&&c.dump.on)return {k:"stop",title:"🔻 DUMP after a pump",text:`${sym} is ${Math.abs(c.dump.off_peak_pct).toFixed(0)}% below its post-pump peak (${money(c.dump.peak)}). Don't panic-sell Core. Buy days continue.`,why:"Up like a rocket, down like a feather."};
+  if(c.take_profit&&c.take_profit.on){const n=c.news||{},what=(n.hype_titles||n.catalyst_titles||[])[0];
+    return {k:"stop",title:`💰 TAKE-PROFIT WINDOW · ${c.take_profit.strength}`,text:`Why: ${c.take_profit.reasons.join("; ")}.${what?` What's happening: ${what}.`:""}`,why:"If you trim, keep it small (10–20%). Over 10 years holding beat selling."};}
+  if(c.pump&&c.pump.score>=60)return {k:"stop",title:`🚀 PUMP WATCH · ${c.pump.label}`,text:`Pump meter ${c.pump.score}/100, ${pc(c.change_7d)} in 7 days. Don't chase it. Your plan says hold.`,why:"If you ever take profit, it's moments like this."};
+  if(((c.bottom_count||0)>=3)||(c.pivots&&px<c.pivots.S2))return {k:"zone",title:"🟢 EXTRA BUY-IN OPPORTUNITY?",text:`${sym} looks washed out${c.pivots&&px<c.pivots.S2?` and is below S2 (${money(c.pivots.S2)})`:""}. Optional: extra money only, spread over a few weeks. Scheduled buys don't change.`,why:"Not a bottom call. Nobody knows the bottom."};
   const nf=flagsOn(c).length;
   if(nf>=3)return {k:"stop",title:"🟡 HEADS UP · overheated",text:`${nf} of ${NFLAGS} top flags are on. Check your sell orders are on Kraken. No extra buys beyond the schedule.`,why:"Context, not a trigger. Core is never sold."};
   if((c.bottom_count||0)>=3)return {k:"zone",title:"🟡 HEADS UP · washed out",text:`${c.bottom_count} of ${NBOTTOMS} bottom signals are on. Stick to the schedule. Your buy-backs are waiting lower.`,why:"Context, not a trigger. This is when people panic-sell. Don't."};
@@ -285,10 +290,23 @@ function weather(c){const nf=flagsOn(c).length,nb=c.bottom_count||0,t=trend(c);
     <span class="pill" style="${nf>=3?"color:var(--red);border-color:#6a2635":""}" title="Top-warning flags">🌡 ${nf}/${NFLAGS} hot</span>
     <span class="pill" style="${nb>=3?"color:var(--ice);border-color:#1f5560":""}" title="Bottom signals">🧊 ${nb}/${NBOTTOMS} washed out</span>`;}
 
+const PUMPC={Calm:"var(--muted)",Heating:"var(--amber)",Pumping:"var(--red)",Extreme:"#ff2d55"};
+function trading(){return P().core<100;}
+function levelsLine(c){const v=c.pivots;if(!v)return "";const px=c.price,names=["S2","S1","P","R1","R2"];
+  const below=names.filter(n=>v[n]<=px).pop(),above=names.find(n=>v[n]>px);
+  return `<span title="Monthly pivots (TradingView Traditional)">📏 ${below?`${below} ${money(v[below])}`:"below S2"} ◂ <b>${money(px)}</b> ▸ ${above?`${above} ${money(v[above])}`:"above R2"}</span>`;}
+function pumpBar(c){const p=c.pump;if(!p)return "";const col=PUMPC[p.label]||"var(--muted)";
+  return `<div class="row small" style="gap:8px;margin-top:8px" title="Pump meter: speed, stretch, RSI, volume, leverage, news, trending"><span style="width:92px">🚀 Pump ${p.score}</span>
+    <div style="flex:1;height:6px;background:#222a40;border-radius:3px;overflow:hidden"><i style="display:block;height:100%;width:${p.score}%;background:${col}"></i></div><span style="color:${col};width:64px;text-align:right">${p.label}</span></div>`;}
+function profitNote(c){const tp=c.take_profit;
+  if(tp&&tp.on)return `<div class="small" style="margin-top:8px;padding:8px;border:1px solid #6b4317;border-radius:9px;background:#2a1a0c;color:#ffd2a1">💰 <b>Take-profit window: ${esc(tp.strength)}</b><br>Why: ${tp.reasons.map(esc).join(" · ")}<br><span class="muted">If you trim, keep it small (10–20%). Information, not an order.</span></div>`;
+  if(tp&&tp.reasons&&tp.reasons.length)return `<div class="small muted" style="margin-top:8px">💰 Not a take-profit window yet (${tp.reasons.length}/3 signs): ${tp.reasons.map(esc).join(" · ")}</div>`;
+  return "";}
 function renderMissions(){
   if(!DATA){return FETCH_ERR?`<div class="card">Couldn't load signals from <span class="mono">${esc(S.settings.dataUrl)}</span> (${esc(FETCH_ERR)}). If you just set up GitHub, wait for the first watcher run to finish, then refresh.</div>`:`<div class="card">Loading signals…</div>`;}
   const nb=nextBuyDay();
-  let h=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="muted small">Buy on schedule · ${P().core}% Core (never sold) · ${100-P().core}% Trade (sells +${TP[0]}/+${TP[1]}%, buy-backs −${BB[0]}/−${BB[1]}%) · next buy day <b>${fmtDate(nb)}</b></div>
+  const FG=DATA.fear_greed;
+  let h=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="muted small">${trading()?`Buy on schedule · ${P().core}% Core (never sold) · ${100-P().core}% Trade (sells +${TP[0]}/+${TP[1]}%, buy-backs −${BB[0]}/−${BB[1]}%)`:"Buy on schedule and hold"} · next buy day <b>${fmtDate(nb)}</b>${FG&&FG.ok?` · market mood <b>${FG.value}/100 ${esc(FG.label)}</b>`:""}</div>
     <div class="row"><button class="b" onclick="addCoin()">＋ Add coin</button><button class="b go" onclick="doCheckIn()" ${S.streak.last===today()?"disabled":""}>✓ Daily check-in</button></div></div><div class="grid">`;
   for(const c0 of DATA.coins){const c=eff(c0),sym=c.symbol,me=C(sym),v=M(sym),d=directive(c);
     const col=(c.change_7d||0)>=0?"var(--green)":"var(--red)",tq=tradeQty(sym),w=waitingUsd(sym),val=(me.core+tq)*c.price+w;
@@ -297,9 +315,14 @@ function renderMissions(){
       <div style="cursor:pointer" id="sp-${sym}" onclick="openChart('${sym}')" title="Open chart">${spark(liveSpark(c),col)}</div>
       <div class="mission m-${d.k}" title="${esc(d.text+(d.why?"\n"+d.why:""))}"><div class="k">${esc(d.title)}</div><div class="t">${esc(d.text)}</div>${d.why?`<div class="why">${esc(d.why)}</div>`:""}
       <div class="btns">${actionButtons(c,d)}</div></div>
-      <div class="buckets"><div class="bk"><small>🔒 Core</small><b class="mono">${qty(me.core)}</b><small>never sold</small></div>
+      ${trading()?`<div class="buckets"><div class="bk"><small>🔒 Core</small><b class="mono">${qty(me.core)}</b><small>never sold</small></div>
         <div class="bk"><small>🔁 Trade</small><b class="mono">${qty(tq)}</b><small>${v.lots.length} lot${v.lots.length===1?"":"s"}</small></div>
-        <div class="bk"><small>💵 Waiting</small><b class="mono">${money(w)}</b><small>for buy-backs</small></div></div>
+        <div class="bk"><small>💵 Waiting</small><b class="mono">${money(w)}</b><small>for buy-backs</small></div></div>`
+      :`<div class="buckets" style="grid-template-columns:1fr 1fr"><div class="bk"><small>🔒 Coins held</small><b class="mono">${qty(me.core+tq)}</b><small>never sold</small></div>
+        <div class="bk"><small>Next buy day</small><b class="mono">${fmtDate(nextBuyDay())}</b><small>${planAmt(sym)?money(planAmt(sym)):"set in Setup"}</small></div></div>`}
+      ${pumpBar(c)}
+      <div class="row small mono" style="margin-top:6px;justify-content:space-between">${levelsLine(c)}${c.tone&&c.tone.label!=="Quiet"?`<span title="7-day news tone">📰 ${c.tone.label}</span>`:""}</div>
+      ${profitNote(c)}
       <div class="row small" style="margin-top:8px;justify-content:space-between"><span class="muted">Total value</span><span class="mono">${money(val)}</span></div>
       <div class="row" style="margin-top:8px;gap:6px;cursor:pointer" onclick="TAB='market';render()">${weather(c)}</div>
     </div>`;}
@@ -326,10 +349,19 @@ function renderOrders(){if(!DATA)return `<div class="card">Loading…</div>`;
   return h+`</div>`;}
 
 function renderMarket(){if(!DATA)return `<div class="card">Loading…</div>`;
-  let h=`<div class="card" style="margin-bottom:14px"><b>Market read</b><p class="small muted" style="margin:4px 0 0">What's happening, not what will happen. These never trade by themselves; they explain the moves and help you stay calm. 3+ top flags = overheated, 3+ bottom signals = washed out.</p></div><div class="grid">`;
+  const FG=DATA.fear_greed;
+  let h=FG&&FG.ok?`<div class="card" style="margin-bottom:14px"><div class="row" style="justify-content:space-between"><b>Market mood · Crypto Fear &amp; Greed</b><span class="mono" style="font-size:22px">${FG.value}<span class="small muted">/100</span></span></div>
+    <div style="height:8px;border-radius:4px;margin:8px 0;background:linear-gradient(90deg,#ff5c7a,#ffb547,#8a96b0,#3ddc97,#3ddc97);position:relative"><i style="position:absolute;left:calc(${FG.value}% - 5px);top:-3px;width:10px;height:14px;border-radius:3px;background:#fff"></i></div>
+    <div class="small muted">${esc(FG.label)}${FG.week_ago!=null?` · a week ago ${FG.week_ago}`:""}. Extreme fear is when people panic-sell; extreme greed is when they chase tops. Neither one is a signal to act, but it's good to know which crowd you're in.</div></div>`:"";
+  h+=`<div class="card" style="margin-bottom:14px"><b>Market read</b><p class="small muted" style="margin:4px 0 0">What's happening, not what will happen. These never trade by themselves; they explain the moves and help you stay calm. 3+ top flags = overheated, 3+ bottom signals = washed out.</p></div><div class="grid">`;
   for(const c0 of DATA.coins){const c=eff(c0),nflags=flagsOn(c).length,t=trend(c);
     h+=`<div class="card"><div class="row" style="justify-content:space-between"><b class="sym">${c.symbol}</b><span class="mono">${money(c.price)}</span></div>
       <div class="small" style="margin-top:6px">${esc(t.label)}</div>
+      ${pumpBar(c)}
+      ${c.pump?`<div class="small muted" style="margin-top:4px">${Object.entries(c.pump.parts).map(([k,v])=>`${k} ${Math.round(v*100)}%`).join(" · ")}</div>`:""}
+      ${c.dump&&c.dump.on?`<div class="small dn" style="margin-top:6px">🔻 Dumping: ${c.dump.off_peak_pct}% from the post-pump peak ${money(c.dump.peak)} (pump around ${c.dump.pump_day})</div>`:""}
+      ${c.pivots?`<table class="small" style="margin-top:8px"><tr>${["S2","S1","P","R1","R2"].map(n=>`<th>${n}</th>`).join("")}</tr><tr>${["S2","S1","P","R1","R2"].map(n=>`<td class="mono" style="${c.price<c.pivots[n]?"color:var(--red)":"color:var(--green)"}">${money(c.pivots[n])}</td>`).join("")}</tr></table><div class="small muted">Monthly pivots (from ${c.pivots.from}). Green = price is above it, red = below.</div>`:""}
+      ${c.tone?`<div class="small" style="margin-top:6px">📰 News tone (7 days): <b>${c.tone.label}</b>${c.news?` · ${c.news.positive_7d||0} positive, ${c.news.risk_7d||0} risk headlines`:""}</div>${c.news&&c.news.risk_titles&&c.news.risk_titles.length?`<div class="small muted">Risk: ${c.news.risk_titles.map(esc).join(" · ")}</div>`:""}`:""}
       <div class="small muted mono" style="margin-top:4px">RSI ${c.rsi_daily??"–"} daily · ${c.rsi_weekly??"–"} weekly · ${c.drawdown_pct!=null?pc(c.drawdown_pct)+" from 2y high":""} · 200-day avg ${money(c.ma200)}</div>
       <div class="sect"><span>Top-warning flags</span><span class="mono">${nflags}/${NFLAGS}</span></div>
       <div class="meter">${[...Array(NFLAGS)].map((_,i)=>`<i class="${i<nflags?"f":""}"></i>`).join("")}</div>
@@ -345,7 +377,7 @@ function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S
   return `<div class="card"><b>Your plan</b><p class="small muted">Buy on these days every month. Each buy goes ${p.core}% to Core (never sold) and ${100-p.core}% to that month's Trade lot.</p>
     ${DATA&&DATA.plan&&DATA.plan.days.join(",")!==ds.join(",")?`<div class="banner stale" style="margin:0 0 8px">Your phone's daily ping uses buy days <b>${DATA.plan.days.join(" and ")}</b> (from GitHub). To match these, add <span class="mono">"plan": {"days": [${ds.join(", ")}]}</span> to coins.json.</div>`:""}
     <div class="three"><div><label>Buy day 1</label><input type="number" min="1" max="28" id="pd1" value="${ds[0]||1}"></div><div><label>Buy day 2 (blank = none)</label><input type="number" min="1" max="28" id="pd2" value="${ds[1]||""}"></div><div><label>Buy day 3 (blank = none)</label><input type="number" min="1" max="28" id="pd3" value="${ds[2]||""}"></div></div>
-    <div class="two"><div><label>Core share %</label><input type="number" min="0" max="100" id="pcore" value="${p.core}"></div><div><label>Bull mode</label><select id="pbull"><option value="1" ${p.bull?"selected":""}>On: in a bull trend, the +40% sell keeps half as a runner</option><option value="0" ${p.bull?"":"selected"}>Off</option></select></div></div>
+    <div class="two"><div><label>Core share % (100 = buy and hold, recommended · lower turns on trading)</label><input type="number" min="0" max="100" id="pcore" value="${p.core}"></div><div><label>Bull mode</label><select id="pbull"><option value="1" ${p.bull?"selected":""}>On: in a bull trend, the +40% sell keeps half as a runner</option><option value="0" ${p.bull?"":"selected"}>Off</option></select></div></div>
     <table style="margin-top:10px"><tr><th>Coin</th><th>$ per buy day</th><th>🔒 Core coins</th><th>Trade coins</th></tr>
     ${syms.map(s=>{const m=C(s);M(s);return `<tr><td><b>${s}</b></td><td><input type="number" step="any" data-f="amt" data-s="${s}" value="${p.amounts[s]||""}"></td><td><input type="number" step="any" data-f="core" data-s="${s}" value="${m.core?+(+m.core).toPrecision(8):""}"></td><td class="mono">${qty(tradeQty(s))} <button class="b" onclick="addLot('${s}')">＋ lot</button></td></tr>`}).join("")}</table>
     <p class="small muted">Already hold coins? Put them in Core if you're keeping them; use ＋ lot for coins you want the sell ladder to manage (enter what you paid). Your earlier holdings were moved to Core automatically.</p>
@@ -356,6 +388,7 @@ function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S
     <div class="btns"><button class="b" onclick="copyBackup()">Copy backup</button><button class="b" onclick="restore()">Restore from backup</button><button class="b warn" onclick="wipe()">Reset everything</button></div></div>`;}
 
 function render(){renderHeader();const v=document.getElementById("view");
+  const ob=document.querySelector('#tabs button[data-t="orders"]');if(ob)ob.style.display=trading()?"":"none";if(TAB==="orders"&&!trading())TAB="missions";
   v.innerHTML=TAB==="missions"?renderMissions():TAB==="orders"?renderOrders():TAB==="market"?renderMarket():TAB==="journal"?renderJournal():TAB==="backtest"?renderBacktest():renderSetup();
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB));}
 
@@ -436,7 +469,7 @@ function renderHeader(){const L=level(),cur=LEVELS[L][0],nxt=LEVELS[L+1]?LEVELS[
   const mm=DATA?DATA.coins.filter(c=>LIVE.mismatch[c.symbol]).map(c=>c.symbol):[];
   if(mm.length)b+=`<div class="banner stale">⚠️ Live price for ${mm.join(", ")} disagrees with the watcher by more than 25%, so the app is ignoring the live price for rules. Check the coin's "kraken"/"ws" names in coins.json.</div>`;
   document.getElementById("banners").innerHTML=b;
-  document.getElementById("foot").innerHTML=DATA?`Crypto Coach app v${APP_VERSION} · watcher ${DATA.version?"v"+esc(DATA.version):"(old)"} · Data: ${esc(DATA.source||"")} · signals updated ${new Date(DATA.generated_at).toLocaleString()}${IS_DEMO?"":" ("+Math.round(ageMin())+" min ago)"} · live prices: Kraken WebSocket. These are rule-based signals, not predictions or financial advice. Your plan: scheduled buys, Core never sold, Trade lots sell at +20/+40% and buy back at −20/−40%. Flags and signals are context, not triggers.`:"";}
+  document.getElementById("foot").innerHTML=DATA?`Crypto Coach app v${APP_VERSION} · watcher ${DATA.version?"v"+esc(DATA.version):"(old)"} · Data: ${esc(DATA.source||"")} · signals updated ${new Date(DATA.generated_at).toLocaleString()}${IS_DEMO?"":" ("+Math.round(ageMin())+" min ago)"} · live prices: Kraken WebSocket. These are rule-based signals, not predictions or financial advice. Your plan: buy on schedule and hold${trading()?", with a Trade slice that sells at +20/+40% and buys back at −20/−40%":""}. Pump meter, levels, mood, flags and news are context, not triggers.`:"";}
 
 
 
@@ -473,6 +506,19 @@ async function loadStress(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,
 function vLabel(k){const m=Object.fromEntries(k.split(" ").map(x=>x.split("=")));
   return `${m.lots==="buy"?"Each buy its own lot":m.lots==="month"?"One lot per month":"One average"} · ${m.core}% core${m.bull==="on"?" · bull mode":""}${m.stale==="on"?" · 120-day rule":""}`;}
 const sp=x=>x==null?"—":`<span class="${x>=0?"up":"dn"}">${pc(x)}</span>`;
+function renderHorizons(){const H=ST&&ST.my_plan&&ST.my_plan.horizons;if(!H)return "";
+  const tbl=(k,hz)=>{const rows=Object.entries(hz.coins).map(([sym,r])=>`<tr><td><b>${sym}</b><div class="small muted">${r.from}${r.short?" ⚠️ shorter history":""}</div></td>
+      <td class="mono">${money(r.invested)}</td><td class="mono">${qty(r.coins)}</td><td class="mono"><b>${money(r.value)}</b></td>
+      <td class="mono ${r.value>=r.invested?"up":"dn"}">${pc((r.value/r.invested-1)*100)}</td>
+      <td class="mono">${money(r.trim_value)} <span class="${r.trim_vs_hold_pct>=0?"up":"dn"} small">${pc(r.trim_vs_hold_pct)}</span><div class="small muted">${r.trims} trim${r.trims===1?"":"s"}</div></td></tr>`).join("");
+    const T=hz.total;
+    return `<div style="margin-top:10px"><b>${k==="5y"?"5 years":"10 years"}</b> <span class="small muted">up to ${Object.values(hz.coins)[0]?.to||""}</span>
+      <table><tr><th>Coin</th><th>Put in</th><th>Coins</th><th>Value today</th><th>Gain</th><th>If you'd trimmed 15% in each 💰 window</th></tr>${rows}
+      <tr><td><b>Total</b></td><td class="mono"><b>${money(T.invested)}</b></td><td></td><td class="mono"><b>${money(T.value)}</b></td><td class="mono ${T.value>=T.invested?"up":"dn"}"><b>${pc((T.value/T.invested-1)*100)}</b></td>
+      <td class="mono">${money(T.trim_value)} <span class="${T.trim_value>=T.value?"up":"dn"} small">${pc((T.trim_value/T.value-1)*100)}</span></td></tr></table></div>`;};
+  return `<div class="card" style="margin-top:14px;border-color:#2f7a55"><b>📅 Buy + hold totals · $${ST.my_plan.amount} per coin on the 1st and 15th</b>
+    <p class="small muted" style="margin:4px 0 0">Real daily prices (Coinbase; XRP from Bitstamp), 0.40% fee per buy, value at the latest close. "If you'd trimmed" tests the 💰 take-profit window using its price signs only (7-day jump, stretch above the 20-day, RSI, above R1, volume surge; 3+ at a close): sell 15% at the next open, and put the cash back in over the next 6 buy days. ⚠️ = the coin's history is shorter than the period, so it starts at its listing.</p>
+    ${Object.entries(H).map(([k,hz])=>tbl(k,hz)).join("")}</div>`;}
 function renderMyPlan(){const MP=ST&&ST.my_plan;if(!MP||!MP.coins||!Object.keys(MP.coins).length)return "";
   const rows=Object.entries(MP.coins).map(([k,r])=>{const diff=r.value/r.dca_value-1;return `<tr><td><b>${k}</b><div class="small muted">${r.from} → ${r.to}</div></td>
     <td class="mono">${money(r.invested)}<div class="small muted">${r.buy_days} buy days</div></td>
@@ -560,7 +606,7 @@ function renderBacktest(){if(!BT&&!BT_ERR){loadBacktest();return `<div class="ca
   let h=`<div class="card"><b>What would the rules have done?</b> <span class="small muted">· last ${BT.months} months · calculated ${new Date(BT.generated_at).toLocaleString()} · v${esc(BT.version)}</span>
     <p class="small muted" style="margin:8px 0 0">Start: ${esc(A.start||"")}. Fees: ${esc(A.fees||"")}. ${esc(A.fills||"")}. Not tested: ${esc(A.not_tested||"")}.<br>
     <b>Score = total value in coins</b>: coins held plus any cash converted at the final price, so selling high and holding cash counts fairly. <b>Ladder moves after trims</b> = after each trim the ladder restarts from the trim price, using the cash on hand. <b>Half monthly + half deep ladder</b> = half the reserve bought monthly, half on a −10/−25/−40/−55% ladder that also moves after trims; no buy-early.</p></div>`;
-  h=renderMyPlan()+h;
+  h=renderHorizons()+renderMyPlan()+h;
   h+=renderStress();
   h+=renderAccumulate();
   if(BT.overall&&BT.overall.length){
@@ -695,7 +741,7 @@ function openChart(sym){const c=eff(coinData(sym));CH.sym=sym;
   modal(`<div class="row" style="justify-content:space-between"><div><h3 style="margin:0">${sym} <span class="mono" id="chartPx">${money(c.price)}</span></h3>
     <div class="small muted" id="chartNote"></div></div><div class="row"><div class="ivs">${Object.keys(IV).map(k=>`<button class="b ${k===CH.iv?"on":""}" data-iv="${k}" onclick="setIv('${k}')">${k.toUpperCase()}</button>`).join("")}</div><button class="b" onclick="closeModal()">✕</button></div></div>
     <div id="chart"></div>
-    <div class="legend"><span style="--c:#5aa9ff">20 avg</span><span style="--c:#ffb547">50 avg</span><span style="--c:#a98bff">200 avg</span><span style="--c:#ff5c7a">your sell orders</span><span style="--c:#3ddc97">your buy-backs</span><span style="--c:#e7ecf5">your lot costs</span></div>
+    <div class="legend"><span style="--c:#5aa9ff">20 avg</span><span style="--c:#ffb547">50 avg</span><span style="--c:#a98bff">200 avg</span><span style="--c:#ff5c7a">your sell orders</span><span style="--c:#3ddc97">your buy-backs</span><span style="--c:#e7ecf5">your lot costs</span><span style="--c:rgba(61,220,151,.7)">S1 / S2</span><span style="--c:rgba(90,169,255,.8)">P</span><span style="--c:rgba(255,92,122,.7)">R1 / R2</span></div>
     <p class="small muted">Decide on the <b>1D</b> chart, check the big picture on <b>1W</b>. 1H and 4H are mostly noise. Use them to watch, not to act.</p>`);
   drawChart();}
 function setIv(k){CH.iv=k;document.querySelectorAll(".ivs button").forEach(b=>b.classList.toggle("on",b.dataset.iv===k));drawChart();}
@@ -714,6 +760,7 @@ async function drawChart(){const sym=CH.sym,c=coinData(sym),el=document.getEleme
   [[20,"#5aa9ff"],[50,"#ffb547"],[200,"#a98bff"]].forEach(([n,col])=>{if(bars.length>n){const l=ch.addLineSeries({color:col,lineWidth:1.5,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});l.setData(smaLine(bars,n));}});
   openOrders(sym,c).forEach(o=>s.createPriceLine({price:o.price,color:o.kind==="buyback"?"#3ddc97":"#ff5c7a",lineWidth:1,lineStyle:2,axisLabelVisible:true,
     title:o.kind==="buyback"?"buy back −"+o.sale.levels[o.i].pct+"%":o.kind==="runner"?"runner +100%":"sell +"+TP[o.k]+"%"}));
+  if(c.pivots)["S2","S1","P","R1","R2"].forEach(n=>s.createPriceLine({price:c.pivots[n],color:n==="P"?"rgba(90,169,255,.8)":n[0]==="S"?"rgba(61,220,151,.55)":"rgba(255,92,122,.55)",lineWidth:1,lineStyle:3,axisLabelVisible:true,title:n}));
   M(sym).lots.forEach(l=>s.createPriceLine({price:lotPer(l),color:"#e7ecf5",lineWidth:1,lineStyle:0,axisLabelVisible:true,title:lotName(l)+" lot cost"}));
   const show={"1h":120,"4h":150,"1d":180,"1w":200}[CH.iv];ch.timeScale().setVisibleLogicalRange({from:bars.length-show,to:bars.length+3});
   CH.chart=ch;CH.series=s;

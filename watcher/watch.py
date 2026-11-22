@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import engine  # noqa: E402
 import news  # noqa: E402
 import notify  # noqa: E402
+import radar  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 try:
@@ -42,6 +43,7 @@ UA = {"User-Agent": "crypto-coach-watcher/1.0"}
 FEED_UA = {"User-Agent": "Mozilla/5.0 (compatible; crypto-coach-watcher/1.0)",
            "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"}
 TRENDING = "https://api.coingecko.com/api/v3/search/trending"
+FEAR_GREED = "https://api.alternative.me/fng/?limit=8"
 
 
 # ----------------------------------------------------------------- helpers
@@ -207,6 +209,20 @@ def score_coin(coin, th, ladder, prev, rules=None):
 
     fut = futures_info(coin.get("futures"))
 
+    # --- v6 radar: monthly pivots and 4h closes through them, dump watch, volume surge
+    piv = radar.pivots(d, now_ts())
+    al = dict((prev or {}).get("alerted", {}))
+    lv = al.get("levels") or {}
+    done = set(lv.get("done", [])) if piv and lv.get("month") == piv["month"] else set()
+    since = (prev or {}).get("radar_ts")
+    breaks = radar.level_breaks(h4, piv, since if since else 0, done)
+    if not since:
+        breaks = []                       # first run for this coin: remember this month's breaks, don't alert them
+    al["levels"] = {"month": piv["month"] if piv else None, "done": sorted(done)}
+    vols = [c["v"] for c in d[-31:-1]]
+    vol_ratio = (d[-1]["v"] / (sum(vols) / len(vols))) if vols and sum(vols) > 0 else None
+    dump = radar.dump_watch(d)
+
     # --- open-interest history (one sample per ~day, kept in signals.json)
     oi_hist = list((prev or {}).get("oi_history", []))
     if fut and fut.get("oi"):
@@ -298,7 +314,9 @@ def score_coin(coin, th, ladder, prev, rules=None):
         "trailing_stop": trail,
         "oi_history": oi_hist,
         "spark": [round(c, 8) for c in closes[-60:]],
-        "alerted": (prev or {}).get("alerted", {}),
+        "alerted": al,
+        "pivots": piv, "level_breaks": [{"key": k, "level": n, "price": lvp, "close": cl, "ts": t} for k, n, lvp, cl, t in breaks],
+        "radar_ts": now_ts(), "vol_ratio": rnd(vol_ratio, 2) if vol_ratio is not None else None, "dump": dump,
     }
 
 
@@ -341,8 +359,8 @@ def build_alerts(s, first_run):
     bt = tier(s["bottom_count"])
     if bt > al.get("btier", 0) and not first_run:
         names = [k.replace("_", " ") for k, b in s["bottoms"].items() if b["on"]]
-        out.append((f"🟡 HEADS UP · {sym} looks washed out at {money(s['price'])} ({s['bottom_count']}/6: "
-                    f"{', '.join(names)}). Stick to the schedule; don't sell Core.", 3))
+        out.append((f"🟢 EXTRA BUY-IN OPPORTUNITY? · {sym} looks washed out at {money(s['price'])} ({s['bottom_count']}/6: "
+                    f"{', '.join(names)}). Optional: extra money only, spread over a few weeks. Never sell Core here.", 3))
     al["btier"] = bt
     return out
 
@@ -365,7 +383,7 @@ def local_now(plan, now=None):
     return datetime.fromtimestamp(now if now is not None else now_ts(), tz)
 
 
-def daily_summary(coins, plan, digest, headsups, now=None):
+def daily_summary(coins, plan, digest, headsups, now=None, fear_greed=None):
     """One ping a day at plan["summary_hour"] (local time): buy-day reminder + each coin's weather.
     Returns (alert or None, new digest state)."""
     loc = local_now(plan, now)
@@ -375,6 +393,9 @@ def daily_summary(coins, plan, digest, headsups, now=None):
     days = [int(d) for d in plan.get("days", [1, 15])]
     buy_day = loc.day in days
     lines = [f"📊 Crypto Coach · {loc.strftime('%a %b')} {loc.day}"]
+    if fear_greed and fear_greed.get("ok"):
+        wk = fear_greed.get("week_ago")
+        lines.append(f"Mood: Fear & Greed {fear_greed['value']}/100 ({fear_greed['label']})" + (f", a week ago {wk}" if wk is not None else ""))
     if buy_day:
         lines.append(f"🗓 BUY DAY: {', '.join(c['symbol'] for c in coins if not c.get('stale'))}. Buy your planned amounts and log them in the app.")
     for c in coins:
@@ -382,11 +403,103 @@ def daily_summary(coins, plan, digest, headsups, now=None):
             lines.append(f"{c['symbol']}: data stale")
             continue
         lines.append(f"{c['symbol']} {money(c['price'])} ({c.get('change_24h') or 0:+.1f}% 24h) · {trend_word(c)} · "
-                     f"🌡 {c.get('auto_flag_count') or 0}/6 hot · 🧊 {c.get('bottom_count') or 0}/6 washed out")
+                     f"🌡 {c.get('auto_flag_count') or 0}/6 hot · 🧊 {c.get('bottom_count') or 0}/6 washed out"
+                     + (f" · 🚀 pump {c['pump']['score']}" if c.get("pump") else "")
+                     + (f" · 📰 {c['tone']['label'].lower()}" if c.get("tone") and c["tone"]["label"] != "Quiet" else ""))
     lines += [h for h, _ in headsups]
     if not buy_day and not headsups:
         lines.append("Nothing to do. Your orders are on Kraken; Kraken pings you if one fills.")
     return ("\n".join(lines), 4 if (buy_day or headsups) else 3), {"last_date": today}
+
+
+def fetch_fear_greed(prev):
+    try:
+        if os.environ.get("DEMO_OFFLINE"):
+            doc = {"data": [{"value": "11", "value_classification": "Extreme Fear"}] + [{"value": "25"}] * 7}
+        else:
+            doc = get_json(FEAR_GREED)
+        fg = radar.parse_fear_greed(doc)
+        if fg:
+            return dict(fg, ts=now_ts(), ok=True)
+        raise ValueError("empty")
+    except Exception as e:  # noqa: BLE001
+        if prev and prev.get("ok") and now_ts() - prev.get("ts", 0) < 12 * 3600:
+            return dict(prev, note="using last reading")
+        return {"ok": False, "error": str(e)[:120], "ts": now_ts()}
+
+
+def add_radar(s):
+    """Pump meter and news tone, once the news step has filled in news metrics."""
+    n = s.get("news") or {}
+    score, label, parts = radar.pump_meter(s.get("change_7d"), s.get("change_30d"), s["price"], s.get("ma20"), s.get("ma50"),
+                                           s.get("rsi_daily"), s.get("vol_ratio"), s.get("funding"), s.get("oi_growth_7d"),
+                                           n.get("spike"), n.get("hype_3d"), n.get("trending_rank"))
+    s["pump"] = {"score": score, "label": label, "parts": parts}
+    s["tone"] = radar.news_tone(n.get("positive_7d", 0), n.get("risk_7d", 0))
+
+
+def add_take_profit(s, fear_greed):
+    f = s.get("flags") or {}
+    s["take_profit"] = radar.take_profit_window(
+        s["price"], s.get("change_7d"), s.get("ma20"), s.get("rsi_daily"), s.get("pivots"), fear_greed, s.get("pump"),
+        s.get("news"), bool((f.get("leverage") or {}).get("on")), (s.get("news") or {}).get("trending_rank"),
+        sum(1 for x in f.values() if x.get("on")))
+
+
+PUMP_TIERS = {"Calm": 0, "Heating": 1, "Pumping": 2, "Extreme": 3}
+
+
+def radar_alerts(s, first_run):
+    """Immediate pings: level breaks, pump tier rising, dump starting, extra buy-in opportunity."""
+    out, sym, al = [], s["symbol"], s["alerted"]
+    if first_run:
+        al["pump_tier"] = PUMP_TIERS.get(s["pump"]["label"], 0)
+        al["dump"] = bool(s["dump"].get("on"))
+        al["tp_window"] = bool((s.get("take_profit") or {}).get("on"))
+        return out
+    for b in s.get("level_breaks", []):
+        arrow = "below" if b["key"].endswith("down") else "above"
+        line = f"📏 {sym} broke {arrow} {b['level']} ({money(b['price'])}): a 4-hour candle closed at {money(b['close'])}."
+        if b["key"] == "S2:down":
+            line += " 🟢 Possible extra buy-in: only extra money, spread over a few weeks. Your scheduled buys don't change."
+        elif b["key"] == "R2:up":
+            line += " Running hot: check the pump meter."
+        out.append((line, 3))
+    t = PUMP_TIERS.get(s["pump"]["label"], 0)
+    if t > al.get("pump_tier", 0) and t >= 2:
+        p = s["pump"]
+        out.append((f"🚀 PUMP WATCH · {sym} pump meter {p['score']}/100 ({p['label']}) at {money(s['price'])}, "
+                    f"{s.get('change_7d') or 0:+.0f}% in 7 days. Up like a rocket often means down like a feather. "
+                    f"Don't chase it; your plan says hold.", 4))
+    al["pump_tier"] = t if t > al.get("pump_tier", 0) or t == 0 else al.get("pump_tier", 0)
+    tp = s.get("take_profit") or {}
+    if tp.get("on") and not al.get("tp_window"):
+        n = s.get("news") or {}
+        what = (n.get("hype_titles") or n.get("catalyst_titles") or [None])[0]
+        out.append((f"💰 TAKE-PROFIT WINDOW · {sym} ({money(s['price'])}): {tp['strength'].lower()} this week. "
+                    f"Why: {'; '.join(tp['reasons'])}." + (f" What's happening: {what}." if what else "") +
+                    " If you trim, keep it small (10-20%) and never your whole stack. Over 10 years, holding beat selling,"
+                    " so treat this as information, not an order.", 4))
+        al["tp_window"] = True
+    elif not tp.get("on") and (s.get("pump") or {}).get("score", 0) < 40:
+        al["tp_window"] = False                     # episode over: the next window alerts again
+    dn = bool(s["dump"].get("on"))
+    if dn and not al.get("dump"):
+        out.append((f"🔻 DUMP · {sym} is {s['dump']['off_peak_pct']:.0f}% below its post-pump peak "
+                    f"({money(s['dump']['peak'])}). Don't panic-sell Core; your buy days continue.", 4))
+    al["dump"] = dn
+    return out
+
+
+def buy_day_reminder(coins, plan, digest, now=None):
+    """Morning ping on buy days (plan days, at plan remind_hour local)."""
+    loc = local_now(plan, now)
+    today = loc.strftime("%Y-%m-%d")
+    days = [int(x) for x in plan.get("days", [1, 15])]
+    if loc.day not in days or loc.hour < int(plan.get("remind_hour", 9)) or (digest or {}).get("reminded") == today:
+        return None
+    syms = ", ".join(c["symbol"] for c in coins if not c.get("stale"))
+    return (f"🗓 BUY DAY · {syms}. Buy your planned amounts on Kraken and log them in the app. Hold; don't time it.", 4), today
 
 
 # ----------------------------------------------------------------- main
@@ -514,20 +627,34 @@ def main():
         s["news"] = m
         s["flags"].update(news.news_flags(m, s.get("change_7d"), th, news_ok, trending.get("ok", False)))
         s["auto_flag_count"] = sum(1 for f in s["flags"].values() if f["on"])
+        add_radar(s)
+    fear_greed = fetch_fear_greed((prev or {}).get("fear_greed"))
+    for s in out:
+        if not s.get("stale") and s.get("pump"):
+            add_take_profit(s, fear_greed)
 
-    headsups = []
+    headsups, instant = [], []
     for s in out:
         if not s.get("stale"):
-            headsups += build_alerts(s, first_run or s["symbol"] in new_coin)
+            fr = first_run or s["symbol"] in new_coin
+            headsups += build_alerts(s, fr)
+            instant += radar_alerts(s, fr)
     plan = cfg.get("plan") or {}
     prev_digest = (prev or {}).get("digest") or {}
-    pending = (prev_digest.get("pending") or []) + [h for h, _ in headsups]   # held until the next summary
+    instant = headsups + instant                                               # v6: heads-ups ping right away
+    pending = prev_digest.get("pending") or []                                # (older held heads-ups, if any)
     if first_run:
         summary, digest = None, {"last_date": local_now(plan).strftime("%Y-%m-%d")}
     else:
-        summary, digest = daily_summary(out, plan, prev_digest, [(h, 3) for h in pending])
+        summary, digest = daily_summary(out, plan, prev_digest, [(h, 3) for h in pending], fear_greed=fear_greed)
         if summary is None:
             digest = dict(prev_digest, pending=pending[-12:])
+        rem = buy_day_reminder(out, plan, prev_digest)
+        if rem:
+            instant.insert(0, rem[0])
+            digest = dict(digest, reminded=rem[1])
+        elif prev_digest.get("reminded"):
+            digest = dict(digest, reminded=prev_digest["reminded"])
 
     doc = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -537,7 +664,9 @@ def main():
         "rules": engine.rules_from(cfg.get("rules")),
         "coins": out,
         "news": dict(state, sources=status, trending=trending),
+        "fear_greed": fear_greed,
         "plan": {"days": plan.get("days", [1, 15]), "summary_hour": plan.get("summary_hour", 18),
+                 "remind_hour": plan.get("remind_hour", 9),
                  "timezone": plan.get("timezone", "America/Vancouver")},
         "digest": digest,
     }
@@ -553,8 +682,10 @@ def main():
             lines.append(f"{c['symbol']} {money(c['price'])} · top flags {c['auto_flag_count']}/6 · bottom signals {c['bottom_count']}/6")
         lines.append("From now on: one summary a day at the time set in coins.json (default 6 pm), with buy-day reminders.")
         notify.send_all([("\n".join(lines), 3)])
-    elif summary:
-        notify.send_all([summary])
+    else:
+        msgs = instant + ([summary] if summary else [])
+        if msgs:
+            notify.send_all(msgs)
 
 
 if __name__ == "__main__":

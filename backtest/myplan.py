@@ -310,3 +310,117 @@ def buy_model(daily, start, model, amount=30.0, days=(1, 15)):
 
 
 BUY_MODELS = ("dca", "weekly_same", "weekly_15", "ma200_boost", "crash_reserve", "value_avg", "lump")
+
+
+def rsi_series(closes, n=14):
+    """Wilder's RSI for every day (None until there's enough history)."""
+    out = [None] * len(closes)
+    if len(closes) <= n:
+        return out
+    gains = [max(0.0, closes[i] - closes[i - 1]) for i in range(1, len(closes))]
+    losses = [max(0.0, closes[i - 1] - closes[i]) for i in range(1, len(closes))]
+    ag, al = sum(gains[:n]) / n, sum(losses[:n]) / n
+    for i in range(n, len(closes)):
+        if i > n:
+            ag = (ag * (n - 1) + gains[i - 1]) / n
+            al = (al * (n - 1) + losses[i - 1]) / n
+        out[i] = 50.0 if ag == al == 0 else 100.0 if al == 0 else 100 - 100 / (1 + ag / al)
+    return out
+
+
+def tp_reasons(daily, i, ma20, rsi, piv):
+    """The price-only part of the app's take-profit window, as of day i's close (no news / mood history)."""
+    c = daily[i]["c"]
+    r = []
+    if i >= 7 and c / daily[i - 7]["c"] - 1 >= 0.25:
+        r.append("7d")
+    if ma20[i] and c / ma20[i] - 1 >= 0.25:
+        r.append("stretch")
+    if rsi[i] is not None and rsi[i] >= 75:
+        r.append("rsi")
+    lvf = (piv or {}).get(_d(daily[i]["t"]).strftime("%Y-%m"))
+    if lvf and c > lvf["R1"]:
+        r.append("R1")
+    vols = [x["v"] for x in daily[max(0, i - 30):i]]
+    if vols and sum(vols) > 0 and daily[i]["v"] / (sum(vols) / len(vols)) >= 2:
+        r.append("volume")
+    return r
+
+
+def pivots_full(daily):
+    """month -> {P, R1, S1, R2, S2} from the previous month (Traditional)."""
+    by_m = {}
+    for c in daily:
+        m = _d(c["t"]).strftime("%Y-%m")
+        b = by_m.setdefault(m, {"h": c["h"], "l": c["l"], "c": c["c"]})
+        b["h"], b["l"], b["c"] = max(b["h"], c["h"]), min(b["l"], c["l"]), c["c"]
+    ms = sorted(by_m)
+    out = {}
+    for prev, cur in zip(ms, ms[1:]):
+        h, l, c = by_m[prev]["h"], by_m[prev]["l"], by_m[prev]["c"]
+        p = (h + l + c) / 3
+        out[cur] = {"P": p, "R1": 2 * p - l, "S1": 2 * p - h, "R2": p + (h - l), "S2": p - (h - l)}
+    return out
+
+
+def hold_and_trim(daily, start, amount=30.0, days=(1, 15), sell_frac=0.15, redeploy=6, min_reasons=3):
+    """Buy + hold, but in each take-profit window (3+ price signs at a close) sell sell_frac of the coins
+    at the next open; the cash goes back in over the next `redeploy` buy days. One trim per window:
+    the window must close (fewer than 2 signs) before the next trim."""
+    ma20 = averages(daily, 20)
+    rsi = rsi_series([c["c"] for c in daily])
+    piv = pivots_full(daily)
+    coins = cash = invested = 0.0
+    left = 0
+    trims, in_window, pending = 0, False, False
+    for i in range(start, len(daily)):
+        c = daily[i]
+        if pending and coins > 0:                          # yesterday's close said trim: sell at today's open
+            q = coins * sell_frac
+            got = q * c["o"] * (1 - TAKER)
+            if got >= MIN_ORDER:
+                coins -= q
+                cash += got
+                left = redeploy
+                trims += 1
+            pending = False
+        if _d(c["t"]).day in days:
+            extra = cash / left if left > 0 and cash > 0.005 else 0.0
+            usd = amount + extra
+            coins += usd * (1 - TAKER) / c["o"]
+            invested += amount
+            cash -= extra
+            left = max(0, left - 1) if extra else left
+        n = len(tp_reasons(daily, i, ma20, rsi, piv))
+        if n >= min_reasons and not in_window:
+            in_window, pending = True, True
+        elif n < 2:
+            in_window = False
+    px = daily[-1]["c"]
+    return {"invested": round(invested, 2), "coins": coins, "cash": round(cash, 2),
+            "value": round(coins * px + cash, 2), "trims": trims}
+
+
+def horizons(series_by_sym, amount=30.0, days=(1, 15), years=(5, 10)):
+    """Buy + hold totals at each horizon up to the latest close, plus the 'act on take-profit windows' test."""
+    out = {}
+    for y in years:
+        hz = {"coins": {}}
+        for sym, d in series_by_sym.items():
+            st = start_index(d, y)
+            short = d[0]["t"] > d[-1]["t"] - int(y * 365.25 * DAY_S) + 40 * DAY_S
+            base = buy_model(d, st, "dca", amount=amount, days=days)
+            trim = hold_and_trim(d, st, amount=amount, days=days)
+            hz["coins"][sym] = {
+                "from": _d(d[st]["t"]).strftime("%Y-%m-%d"), "to": _d(d[-1]["t"]).strftime("%Y-%m-%d"), "short": short,
+                "price_now": d[-1]["c"], "invested": base["invested"], "coins": base["coins"], "value": base["value"],
+                "trim_value": trim["value"], "trims": trim["trims"],
+                "trim_vs_hold_pct": round((trim["value"] / base["value"] - 1) * 100, 2) if base["value"] else None}
+        cs = hz["coins"].values()
+        hz["total"] = {"invested": round(sum(c["invested"] for c in cs), 2), "value": round(sum(c["value"] for c in cs), 2),
+                       "trim_value": round(sum(c["trim_value"] for c in cs), 2)}
+        out[f"{y}y"] = hz
+    return out
+
+
+DAY_S = 86400

@@ -4,6 +4,23 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 6.1.0 · 2026-11-22
+- **💰 Take-profit window** per coin: on when the pump meter is 70+ or 3+ signs line up (+25% in 7 days, 25%+ above the 20-day average, RSI 75+, above monthly R1/R2, Fear & Greed 75+, news hype spiking, trending, leverage, 3+ top flags). Shows *Possible* or *Strong* with the reasons and the top headline, as a Today mission, on the card, and as a **phone alert once per window**. Information, not an order.
+- **📅 Buy + hold totals at 5 and 10 years** for ETH, SOL, XRP, QNT, BTC, LTC and ETC ($30 on the 1st and 15th, real prices and fees). Coins with shorter histories (SOL, QNT, ETC) start at their listing and are flagged. LTC and ETC history added (Coinbase).
+- **Does acting on the take-profit window help?** The same table shows "if you'd trimmed 15% in each window" (price signs only, sold at the next open, cash back in over 6 buy days), so you can see how much to trust the alert.
+- 3 new tests (85 total): take-profit reasons, thresholds and once-per-window alerts; the sim's RSI matches the watcher's RSI exactly; trims, redeploying, and short-history flags.
+
+## 6.0.0 · 2026-11-22
+**Buy-and-hold coach with a market radar.** Built after every test said the same thing: buy on schedule and hold.
+- **Hold-coach mode by default** (Core 100%): Today shows Buy day / Hold and your coins held. The Orders & lots tab hides. Set Core below 100% in Setup to turn trading back on.
+- **🚀 Pump meter (0–100)** per coin, from speed, stretch, RSI, volume surge, leverage, news spike and trending: *Calm / Heating / Pumping / Extreme*. **🔻 Dump warning** when a coin that pumped (+40% in 7 days within the last 30) is 20%+ below its peak.
+- **📏 Support and resistance:** monthly Traditional pivots (P, S1, S2, R1, R2, as on TradingView), shown on cards, the Market tab and the chart. **Alert** when a 4-hour candle closes through one, once per level per month.
+- **🟢 Extra buy-in opportunity** alert when a coin is washed out (3+ bottom signals) or breaks below S2. Optional, extra money only, spread over weeks.
+- **😨/🤑 Market mood:** the Crypto Fear & Greed Index (alternative.me), plus a 7-day **news tone** per coin (positive vs risk headlines).
+- **💰 Profit-taking territory** note when a coin is overheated or pumping (info only; the plan says hold).
+- **Alerts:** a buy-day reminder at 9 am (Vancouver) on your buy days, level breaks, pump tier rising, dump starting, and heads-ups, all sent right away, plus the 6 pm daily summary (now with mood, pump and tone). Settings: `"plan": {"days": [1, 15], "remind_hour": 9, "summary_hour": 18}` in coins.json (optional).
+- 5 new tests (82 total): pivots math, level breaks (closes only, once a month, ignores the forming candle), pump meter extremes and a hand-computed middle case, dump detection, news tone, Fear & Greed parsing, alert de-duplication, and the buy-day reminder timing.
+
 ## 5.4.0 · 2026-11-22
 **More ways to buy, same money.** Added to the "different ways to buy" table:
 - **Weekly, same money** ($13.85 every Monday) and **Weekly $15**.

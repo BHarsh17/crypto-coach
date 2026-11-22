@@ -23,6 +23,8 @@ SOURCES = {
     "SOL": ("coinbase", "SOL-USD"),
     "QNT": ("coinbase", "QNT-USD"),
     "XRP": ("bitstamp", "xrpusd"),
+    "LTC": ("coinbase", "LTC-USD"),
+    "ETC": ("coinbase", "ETC-USD"),
 }
 EARLIEST = 1451606400   # 2016-01-01
 
