@@ -134,6 +134,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
     <button data-t="missions" class="on">🎯 Today</button>
     <button data-t="orders">📋 Orders &amp; lots</button>
     <button data-t="market">🌡 Market</button>
+    <button data-t="compare">📊 Compare</button>
     <button data-t="journal">📓 Journal</button>
     <button data-t="backtest">🧪 Backtest</button>
     <button data-t="setup">⚙️ Setup</button>
@@ -146,7 +147,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "6.1.0";
+const APP_VERSION = "6.2.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -302,6 +303,58 @@ function profitNote(c){const tp=c.take_profit;
   if(tp&&tp.on)return `<div class="small" style="margin-top:8px;padding:8px;border:1px solid #6b4317;border-radius:9px;background:#2a1a0c;color:#ffd2a1">💰 <b>Take-profit window: ${esc(tp.strength)}</b><br>Why: ${tp.reasons.map(esc).join(" · ")}<br><span class="muted">If you trim, keep it small (10–20%). Information, not an order.</span></div>`;
   if(tp&&tp.reasons&&tp.reasons.length)return `<div class="small muted" style="margin-top:8px">💰 Not a take-profit window yet (${tp.reasons.length}/3 signs): ${tp.reasons.map(esc).join(" · ")}</div>`;
   return "";}
+/* ---------- Compare: every tracked coin on one chart ---------- */
+const CMP={range:"1Y",mode:"pct",log:false,chart:null,ro:null};
+const CMP_RANGES={"1M":30,"3M":91,"6M":182,"1Y":365,"3Y":1095,"5Y":1826,"Max":1e9};
+const CMP_COLORS=["#5aa9ff","#3ddc97","#ffb547","#a98bff","#ff5c7a","#7fe3ff","#f78fb3","#c3e88d","#e7ecf5","#ff9f43"];
+function renderCompare(){if(!DATA)return `<div class="card">Loading…</div>`;
+  const btn=(k,on,fn)=>`<button class="b ${on?"pri":""}" onclick="${fn}">${k}</button>`;
+  setTimeout(drawCompare,0);
+  return `<div class="card"><div class="row" style="justify-content:space-between;gap:8px">
+      <div class="row" style="gap:6px">${Object.keys(CMP_RANGES).map(k=>btn(k,CMP.range===k,`CMP.range='${k}';render()`)).join("")}</div>
+      <div class="row" style="gap:6px">${btn("% change",CMP.mode==="pct",`CMP.mode='pct';render()`)}${btn("Your $30 stack",CMP.mode==="stack",`CMP.mode='stack';render()`)}${btn("Log scale",CMP.log,`CMP.log=!CMP.log;render()`)}</div></div>
+    <div id="cmpChart" style="height:420px;margin-top:10px"></div>
+    <div class="small muted" id="cmpNote" style="margin-top:6px"></div></div>
+    <div class="card" style="margin-top:14px"><b>🏆 Leaderboard · ${CMP.range}</b><div id="cmpBoard" class="small" style="margin-top:6px">Loading…</div></div>`;}
+async function cmpSeries(sym,days){const raw=await getCandles(sym),useD=days<=700&&raw["1d"]&&raw["1d"].length;
+  const src=(useD?raw["1d"]:raw["1w"])||[];const t0=Date.now()/1000-days*86400;
+  const bars=src.filter(k=>k[0]>=t0).map(k=>({t:k[0],c:k[4]}));
+  const c=eff(coinData(sym));if(bars.length&&c.price)bars[bars.length-1]={t:bars[bars.length-1].t,c:c.price};
+  return {bars,weekly:!useD};}
+function cmpStack(bars,weekly){let coins=0,inv=0;const out=[],invLine=[];
+  for(let i=0;i<bars.length;i++){const b=bars[i],d=new Date(b.t*1000);
+    let n=0;if(weekly){const prev=i?new Date(bars[i-1].t*1000):new Date(b.t*1000-7*864e5);
+      for(let x=new Date(prev.getTime()+864e5);x<=d;x=new Date(x.getTime()+864e5)){const dd=x.getUTCDate();if(dd===1||dd===15)n++;}}
+    else{const dd=d.getUTCDate();if(dd===1||dd===15)n=1;}
+    if(i===0&&n===0)n=1;
+    for(let k=0;k<n;k++){coins+=30*(1-0.004)/b.c;inv+=30;}
+    out.push({time:b.t,value:coins*b.c});invLine.push({time:b.t,value:inv});}
+  return {out,invLine,coins,inv};}
+async function drawCompare(){const el=document.getElementById("cmpChart");if(!el)return;
+  if(CMP.chart){CMP.chart.remove();CMP.chart=null;}if(CMP.ro){CMP.ro.disconnect();CMP.ro=null;}
+  if(!window.LightweightCharts){el.innerHTML='<p class="muted">Chart library didn\'t load.</p>';return;}
+  const days=CMP_RANGES[CMP.range],syms=DATA.coins.map(c=>c.symbol);
+  const res=await Promise.all(syms.map(s=>cmpSeries(s,days).catch(()=>null)));
+  if(!document.getElementById("cmpChart"))return;
+  const ch=LightweightCharts.createChart(el,{height:420,layout:{background:{color:"#121826"},textColor:"#8a96b0",fontFamily:"JetBrains Mono, monospace"},
+    grid:{vertLines:{color:"#1b2236"},horzLines:{color:"#1b2236"}},rightPriceScale:{borderColor:"#26304a",mode:CMP.log?1:0},timeScale:{borderColor:"#26304a"}});
+  CMP.chart=ch;const rows=[];let invDrawn=false,anyWeekly=false;
+  res.forEach((r,i)=>{if(!r||r.bars.length<2)return;const sym=syms[i],col=CMP_COLORS[i%CMP_COLORS.length],p0=r.bars[0].c,pN=r.bars[r.bars.length-1].c;anyWeekly=anyWeekly||r.weekly;
+    const st=cmpStack(r.bars,r.weekly);
+    const ser=ch.addLineSeries({color:col,lineWidth:2,title:sym,priceLineVisible:false,
+      priceFormat:CMP.mode==="pct"?{type:"custom",formatter:v=>CMP.log?pc(v-100):pc(v)}:{type:"price",precision:0,minMove:1}});
+    if(CMP.mode==="pct")ser.setData(r.bars.map(b=>({time:b.t,value:CMP.log?b.c/p0*100:(b.c/p0-1)*100})));
+    else{ser.setData(st.out);if(!invDrawn){const inv=ch.addLineSeries({color:"#8a96b0",lineWidth:1,lineStyle:2,title:"money in",priceLineVisible:false});inv.setData(st.invLine);invDrawn=true;}}
+    rows.push({sym,col,pct:(pN/p0-1)*100,from:r.bars[0].t,inv:st.inv,val:st.coins*pN});});
+  ch.timeScale().fitContent();
+  CMP.ro=new ResizeObserver(()=>{if(CMP.chart)CMP.chart.applyOptions({width:el.clientWidth});});CMP.ro.observe(el);
+  const t0=Date.now()/1000-days*86400;
+  document.getElementById("cmpNote").textContent=(CMP.mode==="pct"?(CMP.log?"Growth on a log scale (equal distances = equal % moves). ":"Price change since the start of the range. "):"What $30 on the 1st and 15th would be worth (0.4% fee), vs the dashed line = money put in. ")
+    +(anyWeekly?"Long ranges use weekly closes. ":"")+"Coins listed after the range start begin at their first price. Last point = live price.";
+  rows.sort((a,b)=>b.pct-a.pct);
+  document.getElementById("cmpBoard").innerHTML=rows.length?`<table><tr><th>#</th><th>Coin</th><th>Price change</th><th>$30 stack: put in</th><th>Worth now</th><th>Gain</th></tr>${rows.map((r,k)=>`<tr><td>${k===0?"🥇":k===1?"🥈":k===2?"🥉":k+1}</td>
+    <td><b style="color:${r.col}">●</b> <b>${r.sym}</b>${r.from>t0+14*86400?` <span class="muted">(from ${new Date(r.from*1000).toLocaleDateString()})</span>`:""}</td>
+    <td class="mono ${r.pct>=0?"up":"dn"}">${pc(r.pct)}</td><td class="mono">${money(r.inv)}</td><td class="mono">${money(r.val)}</td><td class="mono ${r.val>=r.inv?"up":"dn"}">${pc((r.val/r.inv-1)*100)}</td></tr>`).join("")}</table>`:"No chart data yet.";}
 function renderMissions(){
   if(!DATA){return FETCH_ERR?`<div class="card">Couldn't load signals from <span class="mono">${esc(S.settings.dataUrl)}</span> (${esc(FETCH_ERR)}). If you just set up GitHub, wait for the first watcher run to finish, then refresh.</div>`:`<div class="card">Loading signals…</div>`;}
   const nb=nextBuyDay();
@@ -389,7 +442,7 @@ function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S
 
 function render(){renderHeader();const v=document.getElementById("view");
   const ob=document.querySelector('#tabs button[data-t="orders"]');if(ob)ob.style.display=trading()?"":"none";if(TAB==="orders"&&!trading())TAB="missions";
-  v.innerHTML=TAB==="missions"?renderMissions():TAB==="orders"?renderOrders():TAB==="market"?renderMarket():TAB==="journal"?renderJournal():TAB==="backtest"?renderBacktest():renderSetup();
+  v.innerHTML=TAB==="missions"?renderMissions():TAB==="orders"?renderOrders():TAB==="market"?renderMarket():TAB==="compare"?renderCompare():TAB==="journal"?renderJournal():TAB==="backtest"?renderBacktest():renderSetup();
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB));}
 
 /* ---------- logging ---------- */

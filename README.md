@@ -1,6 +1,6 @@
 # Crypto Coach
 
-**Version:** see `VERSION` (currently 6.1.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+**Version:** see `VERSION` (currently 6.2.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
 
 **v6: buy on schedule, hold, and watch the market without reacting to it.** Every test (10 years of ETH, 5.4 of SOL, many strategies) said the same thing: steady buying and holding beat timing and trading. So the app is now a buy-and-hold coach with a market radar: buy-day reminders, a 🚀 pump & 🔻 dump meter, 📏 support/resistance breaks (monthly pivots), 🟢 optional extra buy-in alerts, 😨/🤑 market mood (Fear & Greed + news tone), live charts, and the backtest lab. Trading (Core below 100%) is still available in Setup.
 

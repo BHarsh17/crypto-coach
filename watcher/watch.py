@@ -302,7 +302,7 @@ def score_coin(coin, th, ladder, prev, rules=None):
         "symbol": coin["symbol"], "name": coin.get("name", coin["symbol"]),
         "ws_symbol": coin.get("ws") or f"{coin['symbol']}/USD",
         "_candles": {k: [[c["t"], c["o"], c["h"], c["l"], c["c"], c["v"]] for c in v[-keep:]]
-                     for k, v, keep in (("1h", h1, 300), ("4h", h4, 300), ("1d", d, 400), ("1w", w, 260))},
+                     for k, v, keep in (("1h", h1, 300), ("4h", h4, 300), ("1d", d, 720), ("1w", w, 720))},   # ~2 years daily, ~13 years weekly (Compare tab)
         "price": price, "change_24h": rnd(ch1), "change_7d": rnd(ch7), "change_30d": rnd(ch30),
         "ma20": ma20, "ma50": ma50, "ma200": ma200, "ma200_prev": ma200_prev, "ma200w": ma200w,
         "rsi_daily": rnd(rsi_d, 1), "rsi_weekly": rnd(rsi_w, 1),

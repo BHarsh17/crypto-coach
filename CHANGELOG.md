@@ -4,6 +4,15 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 6.2.0 · 2026-11-22
+- **📊 Compare tab** (live tracking, not just a backtest): every coin in coins.json on one chart, for 1M · 3M · 6M · 1Y · 3Y · 5Y · Max.
+  - **% change:** every coin starts at 0%, so you see who's winning.
+  - **Your $30 stack:** what $30 on the 1st and 15th would be worth for each coin, with a dashed "money in" line.
+  - **Log scale** option, so one big pump doesn't flatten the rest.
+  - **🏆 Leaderboard** ranked best to worst for the range: price change, money in, worth now, gain. The last point uses the live price.
+- Watcher keeps ~2 years of daily and ~13 years of weekly candles per coin (Kraken's limits) for the long ranges.
+- To track more coins (BTC, LTC, ETC…), add them to coins.json with ＋ Add coin.
+
 ## 6.1.0 · 2026-11-22
 - **💰 Take-profit window** per coin: on when the pump meter is 70+ or 3+ signs line up (+25% in 7 days, 25%+ above the 20-day average, RSI 75+, above monthly R1/R2, Fear & Greed 75+, news hype spiking, trending, leverage, 3+ top flags). Shows *Possible* or *Strong* with the reasons and the top headline, as a Today mission, on the card, and as a **phone alert once per window**. Information, not an order.
 - **📅 Buy + hold totals at 5 and 10 years** for ETH, SOL, XRP, QNT, BTC, LTC and ETC ($30 on the 1st and 15th, real prices and fees). Coins with shorter histories (SOL, QNT, ETC) start at their listing and are flagged. LTC and ETC history added (Coinbase).
