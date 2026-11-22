@@ -1,6 +1,6 @@
 # Crypto Coach
 
-**Version:** see `VERSION` (currently 4.0.1) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+**Version:** see `VERSION` (currently 4.1.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
 
 **Your rules, not your gut.** Crypto Coach keeps a set of buy and sell orders for each coin, watches the price around the clock, and pings your phone the moment one is reached: **🔴 JUMP OUT** (take profit), **🟢 JUMP IN** (buy back or buy the dip), or **🟡 HEADS UP** (something's going on). You still make every trade. It just makes sure the plan gets followed instead of the panic.
 
@@ -77,7 +77,7 @@ There are two parts. One does the thinking, the other shows it to you.
 
 Each run of the workflow (`.github/workflows/watch.yml`) does this, in order:
 
-1. **Self-test** (`tests/test_watch.py`, 30 checks in three layers):
+1. **Self-test** (`tests/test_watch.py`, 57 checks in three layers):
    - **Reference values:** RSI against a published worked example and a hand-worked one, plus averages, percentages and funding maths.
    - **Cross-checks:** a second, independently written RSI and average compared on hundreds of random price series. They must agree to 8 decimal places.
    - **Scenarios:** every flag, bottom signal, ladder rung and alert tested right at its on/off boundary, the news counting and hype maths, and two full offline runs back to back (checking nothing is double-counted).
@@ -306,12 +306,26 @@ Set up **any combination** in GitHub → Settings → Secrets and variables → 
 
 JUMP alerts are sent as high priority on ntfy; heads-ups as normal. No alert means hold.
 
+### Accumulate-from-zero test (v4.1)
+
+The Backtest tab also answers *"when should I buy in?"* It starts with nothing, adds $100 on the 1st of every month, and compares three buy-in signals over about 22 months:
+
+| | Buy-in signal |
+|---|---|
+| **A** | Dip ladder: limit buys −10/−25/−40/−55% below the 30-day high |
+| **B** | Washed out (3+ strict, or 2+ loose, bottom signals in the last 14 days) **and** price closes back above its 20-day average. Buys at the next day's open |
+| **C** | Monthly DCA. The benchmark |
+
+In A and B, every buy puts 40% into **Core** (never sold) and runs the +20/+40% take-profit ladder on the rest. When buy-backs get back more coins than were sold, the extra coins move to Core. Monthly money that no signal used within 60 days is bought anyway. A model only counts if it beats C on most coins **and** in both halves of the period. This is a test only: live alerts don't change until a model earns it.
+
+---
+
 ## 10. Trust guards: how it avoids false info
 
 **No AI calculates any number or sets any flag.** Everything is plain, tested arithmetic on Kraken's data, fixed keyword rules on fixed news outlets, and CoinGecko's trending list.
 
 **On GitHub (watcher):**
-- **Maths self-test before every run** (50 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtest). If it fails, nothing is published.
+- **Maths self-test before every run** (57 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtests). If it fails, nothing is published.
 - **One engine for live and backtest:** the orders you're alerted on come from the same code (`watcher/engine.py`) the backtest replays, so what you were shown in testing is what runs live.
 - **News safety:** headlines are de-duplicated across runs, never counted twice, and articles dated in the future are treated as "now". Only web links (`http`/`https`) are kept from feeds. If every news feed fails, flag 5 stays off for that run rather than guessing.
 - **Bad data is rejected,** never used. A coin is rejected if Kraken returns fewer than 30 candles, candles out of time order, an impossible candle (low above the open or close, or high below them), or a latest candle that's too old.
@@ -385,7 +399,7 @@ Edit on GitHub (click the file, then ✏️, then **Commit changes**). Saving re
 Already done for **BHarsh17/crypto-coach**. Kept here for reference:
 
 1. github.com → **+ → New repository** → name `crypto-coach`, **Public**, nothing ticked → Create.
-2. **uploading an existing file** → drag in `README.md`, `coins.json`, and the `site`, `tests` and `watcher` folders → Commit.
+2. **uploading an existing file** → drag in `README.md`, `coins.json`, `VERSION`, `CHANGELOG.md`, and the `site`, `tests`, `watcher` and `backtest` folders → Commit.
 3. **Settings → Pages → Source: GitHub Actions.**
 4. **Add file → Create new file** → name it `.github/workflows/watch.yml` → paste the workflow → Commit. (This folder is often skipped by drag-and-drop.)
 5. *(Optional)* **Telegram:** message @BotFather → `/newbot` → copy the token. Send your bot any message. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `"chat":{"id": …}`. Then go to **Settings → Secrets and variables → Actions** and add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.

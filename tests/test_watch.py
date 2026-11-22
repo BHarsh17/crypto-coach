@@ -7,6 +7,7 @@ Three layers:
   3. scenarios          - every flag, signal, ladder and alert tested at its exact boundary
 """
 import json
+import math
 import os
 import random
 import re
@@ -20,6 +21,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "watcher"))
 import news  # noqa: E402
 import watch  # noqa: E402
+sys.path.insert(0, os.path.join(HERE, "..", "backtest"))
+import accumulate as acc  # noqa: E402
 
 DAY = 86400
 
@@ -721,6 +724,117 @@ def test_versions_match():
     assert f'const APP_VERSION = "{v}";' in app, "site/index.html and VERSION disagree"
     assert watch.VERSION == v
     assert f"## {v}" in open(os.path.join(root, "CHANGELOG.md")).read(), "CHANGELOG has no entry for this version"
+
+
+# =================================================================== accumulation backtest (v5 models)
+T0 = 1735689600  # 2025-01-01 00:00 UTC
+
+
+def acc_days(rows):
+    """rows of (o, h, l, c) -> daily candles from 1 Jan 2025."""
+    return [{"t": T0 + k * 86400, "o": o, "h": h, "l": l, "c": c, "v": 1.0} for k, (o, h, l, c) in enumerate(rows)]
+
+
+def no_signals(i):
+    return ([], [])
+
+
+def test_acc_dca_buys_each_month():
+    d = acc_days([(10, 10, 10, 10)] * 90)           # Jan, Feb, Mar
+    r = acc.run(d, 0, 89, no_signals, "dca")
+    assert r["contributed"] == 300 and r["buys"] == 3 and r["sells"] == 0
+    close(r["core"], 3 * 100 * (1 - acc.FEE) / 10, 1e-9)
+    close(r["coin_equiv"], r["core"], 1e-9)
+
+
+def test_acc_take_profit_buy_back_and_gain_to_core():
+    b = acc.Book()
+    b.cash = 1000.0
+    b.cash_lots = [[0, 1000.0]]
+    b.buy_in(1000, 100, T0, "test")
+    q = 1000 * (1 - acc.FEE) / 100
+    close(b.core, q * 0.4, 1e-12)
+    close(b.trade, q * 0.6, 1e-12)
+    b.reset_tp()
+    base = 600 / (q * 0.6)
+    close(b.tp["base"], base, 1e-9)
+    # day 1: high hits +20%, low would hit the buy-back too - but the buy-back didn't exist yet
+    b.fill(b.orders(), {"t": T0 + 86400, "h": base * 1.25, "l": 1.0})
+    tp1 = base * 1.2
+    sold = q * 0.6 * 0.5
+    close(b.trade, q * 0.6 - sold, 1e-12)
+    assert b.sells == 1 and b.buys == 1 and len(b.sales) == 1
+    got = sold * tp1 * (1 - acc.FEE)
+    lv = b.sales[0]["levels"]
+    close(lv[0]["price"], tp1 * 0.8, 1e-9)
+    close(lv[1]["price"], tp1 * 0.6, 1e-9)
+    close(lv[0]["usd"], got / 2, 1e-9)
+    core_before = b.core
+    # day 2: both buy-backs fill; coins bought back beyond what was sold go to Core
+    b.fill(b.orders(), {"t": T0 + 2 * 86400, "h": 1.0, "l": tp1 * 0.5})
+    rebought = got / 2 * (1 - acc.FEE) / (tp1 * 0.8) + got / 2 * (1 - acc.FEE) / (tp1 * 0.6)
+    assert rebought > sold
+    close(b.core - core_before, rebought - sold, 1e-12)
+    close(b.trade, q * 0.6 - sold + sold, 1e-12)      # trade bucket back to its size before the sale
+    assert b.sales == [] and b.buys == 3
+
+
+def test_acc_new_take_profit_waits_a_day():
+    b = acc.Book()
+    b.cash = 1000.0
+    b.cash_lots = [[0, 1000.0]]
+    b.buy_in(1000, 100, T0, "test")
+    snap = b.orders()                                  # no take-profit yet: it is set at the close
+    assert snap == []
+    b.fill(snap, {"t": T0, "h": 1000.0, "l": 100.0})
+    assert b.sells == 0
+
+
+def test_acc_model_a_rung_and_money_conservation():
+    rows = [(100, 100, 100, 100)] * 31 + [(100, 100, 89, 95)] + [(95, 96, 94, 95)] * 30
+    d = acc_days(rows)
+    r = acc.run(d, 30, len(d) - 1, no_signals, "A")
+    first = r["events"][0]
+    assert first[0] == "2025-02-01" and first[1].startswith("JUMP IN: dip rung 1")
+    close(first[2], 90.0, 1e-9)                        # 10% below the 30-day high of 100
+    close(first[3], 200 / 4, 1e-9)                      # Jan + Feb money waiting, a quarter of it
+
+
+def test_acc_b_buys_next_open_after_turn():
+    rows = [(100 - k, 100 - k, 99 - k, 100 - k) for k in range(40)]
+    rows += [(61, 75, 61, 74), (77, 78, 76, 77)] + [(77, 78, 76, 77)] * 5
+    d = acc_days(rows)
+    r = acc.run(d, 20, len(d) - 1, lambda i: ([], ["a", "b", "c"]), "B_strict")
+    first = r["events"][0]
+    assert first[1] == "JUMP IN: washed out + turning up"
+    assert first[0] == acc.day(d[41]["t"])            # signal at day 40's close -> next day's open
+    close(first[2], 77.0, 1e-9)
+
+
+def test_acc_money_waits_at_most_60_days():
+    rows = [(100 + k * 0.1, 100 + k * 0.1, 100 + k * 0.1, 100 + k * 0.1) for k in range(120)]
+    d = acc_days(rows)
+    r = acc.run(d, 0, 119, no_signals, "A")
+    first = r["events"][0]
+    assert first[1].startswith("Waited 60 days") and first[0] == acc.day(d[60]["t"])
+    close(first[3], 100.0, 1e-9)                       # only January's money was that old
+
+
+def test_acc_money_and_coins_add_up():
+    rng = random.Random(7)
+    rows, px = [], 100.0
+    for _ in range(500):
+        o = px
+        px *= math.exp(rng.gauss(0, 0.05))
+        rows.append((o, max(o, px) * 1.02, min(o, px) * 0.98, px))
+    d = acc_days(rows)
+    for m in acc.MODELS:
+        r = acc.run(d, 40, 499, lambda i: ([], ["x"] * (i % 4)), m)
+        spent = sum(e[3] for e in r["events"])
+        close(r["contributed"] - spent, r["cash"], 0.02)        # every dollar is either spent or still waiting
+        coins = sum(e[4] for e in r["events"] if not e[1].startswith("Gain"))
+        close(coins, r["coins"], 1e-6)                           # every coin came from a logged trade
+        assert r["core"] >= -1e-12 and r["trade"] >= -1e-12 and r["cash"] >= -0.01
 
 
 # =================================================================== end to end

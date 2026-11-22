@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "watcher"))
 import engine  # noqa: E402
+import accumulate  # noqa: E402
 import watch  # noqa: E402
 
 DAY = 86400
@@ -347,6 +348,9 @@ def overall(coins):
     return sorted(out, key=lambda r: (-r["coins_beating_dca"], -r["avg_vs_dca_pct"]))
 
 
+ACC_MONTHS = 24          # accumulation test: as far back as Kraken's ~720 daily candles allow
+
+
 def backtest_coin(symbol, daily, weekly, months, cfg, now=None):
     th, ladder = cfg["thresholds"], cfg["ladder"]
     now = time.time() if now is None else now
@@ -381,8 +385,10 @@ def backtest_coin(symbol, daily, weekly, months, cfg, now=None):
             days_f[k] = days_f.get(k, 0) + 1
         for k in b:
             days_b[k] = days_b.get(k, 0) + 1
+    ia = max(60, i1 - int(round(ACC_MONTHS * 30.4375)))
+    acc = accumulate.compare(daily, ia, i1, sig)
     win = daily[i0:i1 + 1]
-    return {"symbol": symbol, "start": day(daily[i0]["t"]), "end": day(daily[i1]["t"]), "days": i1 - i0 + 1,
+    return {"accumulate": acc, "symbol": symbol, "start": day(daily[i0]["t"]), "end": day(daily[i1]["t"]), "days": i1 - i0 + 1,
             "start_price": daily[i0]["c"], "end_price": daily[i1]["c"],
             "low": min(c["l"] for c in win), "high": max(c["h"] for c in win),
             "change_pct": round((daily[i1]["c"] / daily[i0]["c"] - 1) * 100, 2),
@@ -435,7 +441,13 @@ def main():
                "fees": f"{FEE * 100:.2f}% per trade (Kraken Pro limit orders)",
                "fills": "ladder rungs fill at the rung price if the day's low touches it; other actions at the daily close",
                "not_tested": "news, FOMO, leverage and shorts-crowded signals (no free history), so they are treated as off"},
-           "coins": out, "overall": overall(out)}
+           "coins": out, "overall": overall(out),
+           "accumulate_overall": accumulate.overall(out),
+           "accumulate_assumptions": {
+               "money": f"${accumulate.MONTHLY_USD:,.0f} on the 1st of every month, nothing at the start",
+               "split": f"Every buy: {accumulate.CORE_SHARE:.0%} to Core (never sold), the rest to the Trade bucket",
+               "ladder": "Trade bucket: take-profits +20/+40% of its average cost (half each), buy-backs -20/-40% below each sale (half the money each), extra coins bought back move to Core",
+               "signals": "Signals are read at the day's close, acted on at the next day's open; orders fill only if they existed at the start of the day"}}
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with open(a.out, "w") as f:
         json.dump(doc, f, indent=1)

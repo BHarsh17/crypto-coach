@@ -4,6 +4,16 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 4.1.0 · 2026-11-22
+**New test (no change to live alerts yet): accumulate from zero.** The Backtest tab now has a section comparing three ways to decide *when to buy in*, starting with nothing and adding $100 every month, over as much history as Kraken gives (about 22 months):
+- **A · Dip ladder:** limit buys −10/−25/−40/−55% below the 30-day high.
+- **B · Washed out + turning up:** bottom signals (3+ strict, 2+ loose) in the last 14 days, and price closes back above its 20-day average. Buys at the next day's open.
+- **C · Monthly DCA:** the benchmark.
+- A and B put 40% of every buy into Core (never sold) and run the +20/+40% take-profit ladder on the rest. Coins gained from buy-backs move to Core.
+- Monthly money that no signal used within 60 days is bought anyway, so you're never stuck in cash.
+- Results are also split into two halves. A model only counts if it wins in both.
+- 7 new tests (57 total), including: every dollar is spent or still waiting, and every coin comes from a logged trade.
+
 ## 4.0.1 · 2026-11-22
 - **Fix (found by checking the real backtest):** when a second buy-back lowered your average, the re-priced take-profit could "fill" on the same candle, even though that order didn't exist yet (SOL, 10 Oct 2025). Re-priced take-profits now wait for the next check, live and in the backtest. New test added.
 
