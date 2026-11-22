@@ -1,10 +1,31 @@
 # Crypto Coach
 
-**Version:** see `VERSION` (currently 4.3.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+**Version:** see `VERSION` (currently 5.1.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
 
-**Your rules, not your gut.** Crypto Coach keeps a set of buy and sell orders for each coin, watches the price around the clock, and pings your phone the moment one is reached: **🔴 JUMP OUT** (take profit), **🟢 JUMP IN** (buy back or buy the dip), or **🟡 HEADS UP** (something's going on). You still make every trade. It just makes sure the plan gets followed instead of the panic.
+**Your rules, not your gut.** Crypto Coach runs a simple accumulation plan, the one a 10-year stress test supports (see `STRATEGY.md`), and keeps you from panic-selling. You place every trade yourself on Kraken; the app tells you what your plan says and keeps the books.
 
-**The v4 plan in one line:** sell half your trade coins at +20% and the other half at +40% above what you paid, buy back 20% and 40% below each sale, and keep a dip reserve on a −10 / −25 / −40 / −55% ladder. This was the most consistent approach in the 18-month backtest across ETH, SOL, XRP, QNT and BTC: it beat monthly DCA on all five.
+**The v5 plan in four lines:**
+1. **Buy on a schedule** (default the 1st and 15th), a fixed amount per coin. No waiting for dips: over 10 years, timing didn't beat the schedule.
+2. **70% of every buy goes to Core** and is never sold. **30% goes into that month's Trade lot.**
+3. **Each Trade lot sells half at +20% and the rest at +40%** of its own cost. Each sale sets **buy-backs at −20% and −40%**, half the sale money each. Coins bought back beyond what you sold move to Core. **Buy-backs last until the month ends;** unfilled ones are cancelled and their cash joins your next 3 buy days at the new prices, so everything re-baselines monthly.
+4. **Bull mode:** in a bull trend, the +40% sell keeps half as a runner, sold at +100% or when the trend fades (the price closes below its 50-day average).
+
+**Honest expectation:** over full cycles this roughly matches plain monthly buying. It does better in crashes and worse in bull runs. Its job is to give you cash and something to do in crashes, so you don't sell at the bottom.
+
+### v5 at a glance
+| Where | What you see |
+|---|---|
+| 🎯 **Today** | One mission per coin: 🗓 Buy day · 🔴 Sell (a lot hit its target) · 🟢 Buy back · 🟡 Heads up · ✅ Hold. Then Core / Trade / Waiting, and the market weather. |
+| 📋 **Orders & lots** | Exactly which limit orders to have on Kraken (amounts and prices), every Trade lot, and your Core. |
+| 🌡 **Market** | Trend (price vs. the 200-day average), RSI, the 6 top flags, the 6 bottom signals, and news hype. Context only, never a trigger. |
+| 📱 **Your phone** | **One summary a day** at 6 pm (Vancouver time): buy-day reminder plus each coin's weather and any heads-up. Kraken notifies you itself when your limit orders fill. |
+| ⚙️ **Setup** | Buy days, Core %, bull mode, $ per buy day per coin, your Core coins, and "＋ lot" for coins you already hold. |
+
+Change the ping's buy days, time or time zone in `coins.json`: `"plan": {"days": [1, 15], "summary_hour": 18, "timezone": "America/Vancouver"}`. If you change buy days in the app, change them here too; Setup warns you if they differ.
+
+**Privacy:** your amounts, lots and journal live only in your browser. GitHub never sees them; it only publishes market data and the daily summary.
+
+*The sections below describe the watcher, flags and trust guards, which are unchanged. Sections 6–9 describe the older v4 order system and are kept for reference.*
 
 > These are rule-based signals, not predictions or financial advice. They can't promise what the market will do. They make sure *your* plan gets followed.
 
@@ -77,7 +98,7 @@ There are two parts. One does the thinking, the other shows it to you.
 
 Each run of the workflow (`.github/workflows/watch.yml`) does this, in order:
 
-1. **Self-test** (`tests/test_watch.py`, 70 checks in three layers):
+1. **Self-test** (`tests/test_watch.py`, 71 checks in three layers):
    - **Reference values:** RSI against a published worked example and a hand-worked one, plus averages, percentages and funding maths.
    - **Cross-checks:** a second, independently written RSI and average compared on hundreds of random price series. They must agree to 8 decimal places.
    - **Scenarios:** every flag, bottom signal, ladder rung and alert tested right at its on/off boundary, the news counting and hype maths, and two full offline runs back to back (checking nothing is double-counted).
@@ -330,7 +351,7 @@ The top of the Backtest tab. It runs the v5 draft rules (`STRATEGY.md`) on up to
 **No AI calculates any number or sets any flag.** Everything is plain, tested arithmetic on Kraken's data, fixed keyword rules on fixed news outlets, and CoinGecko's trending list.
 
 **On GitHub (watcher):**
-- **Maths self-test before every run** (70 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtests). If it fails, nothing is published.
+- **Maths self-test before every run** (71 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtests). If it fails, nothing is published.
 - **One engine for live and backtest:** the orders you're alerted on come from the same code (`watcher/engine.py`) the backtest replays, so what you were shown in testing is what runs live.
 - **News safety:** headlines are de-duplicated across runs, never counted twice, and articles dated in the future are treated as "now". Only web links (`http`/`https`) are kept from feeds. If every news feed fails, flag 5 stays off for that run rather than guessing.
 - **Bad data is rejected,** never used. A coin is rejected if Kraken returns fewer than 30 candles, candles out of time order, an impossible candle (low above the open or close, or high below them), or a latest candle that's too old.

@@ -196,6 +196,7 @@ def score_coin(coin, th, ladder, prev, rules=None):
     price = closes[-1]
 
     ma20, ma50, ma200 = sma(closes, 20), sma(closes, 50), sma(closes, 200)
+    ma200_prev = sma(closes[:-20], 200) if len(closes) >= 220 else None  # 20 days ago: is the trend rising?
     ma200w = sma(wcloses, 200)
     rsi_d, rsi_w = rsi(closes), rsi(wcloses)
     ch1 = pct(price, closes[-2]) if len(closes) > 1 else None
@@ -287,7 +288,7 @@ def score_coin(coin, th, ladder, prev, rules=None):
         "_candles": {k: [[c["t"], c["o"], c["h"], c["l"], c["c"], c["v"]] for c in v[-keep:]]
                      for k, v, keep in (("1h", h1, 300), ("4h", h4, 300), ("1d", d, 400), ("1w", w, 260))},
         "price": price, "change_24h": rnd(ch1), "change_7d": rnd(ch7), "change_30d": rnd(ch30),
-        "ma20": ma20, "ma50": ma50, "ma200": ma200, "ma200w": ma200w,
+        "ma20": ma20, "ma50": ma50, "ma200": ma200, "ma200_prev": ma200_prev, "ma200w": ma200w,
         "rsi_daily": rnd(rsi_d, 1), "rsi_weekly": rnd(rsi_w, 1),
         "high_90d": high90, "high_window": ath_window, "drawdown_pct": rnd(pct(price, ath_window)),
         "funding": funding, "open_interest": fut.get("oi") if fut else None, "oi_growth_7d": rnd(oi_growth),
@@ -325,35 +326,67 @@ def tier(n):
 
 
 def build_alerts(s, first_run):
-    """Returns [(text, priority)] for this coin. Priority 4 = act now, 3 = heads-up."""
+    """Heads-up lines for this coin when its overheated / washed-out tier rises. v5: these go into the
+    daily summary (one ping a day), not straight to your phone. The old JUMP IN/OUT order alerts are gone:
+    your sell and buy-back orders sit on Kraken, and Kraken tells you when they fill."""
     out = []
     sym = s["symbol"]
-    if not first_run:
-        for e in s.get("new_events", []):
-            if e["kind"] == "take_profit":
-                out.append((f"🔴 JUMP OUT · {sym} reached {money(e['price'])}, your +{e['pct']}% take-profit. "
-                            f"Sell {e['share']}% of your trade bucket (the app shows how many coins). "
-                            f"Buy-back orders are now set below it.", 4))
-            elif e["kind"] == "buy_back":
-                out.append((f"🟢 JUMP IN · {sym} fell to {money(e['price'])}: buy back with {e['share']:.0f}% "
-                            f"of the money from that sale. Your next take-profits restart from here.", 4))
-            elif e["kind"] == "dip_buy":
-                out.append((f"🟢 JUMP IN · {sym} dropped to {money(e['price'])} (dip rung {e['rung']}): "
-                            f"spend {e['share']}% of your {sym} dip reserve.", 4))
     al = s["alerted"]
     t = tier(s["auto_flag_count"])
     if t > al.get("tier", 0) and not first_run:
         names = [FLAG_NAMES.get(k, k) for k, f in s["flags"].items() if f["on"]]
         out.append((f"🟡 HEADS UP · {sym} looks overheated at {money(s['price'])} ({s['auto_flag_count']}/6: "
-                    f"{', '.join(names)}). Make sure your take-profit orders are set.", 3))
+                    f"{', '.join(names)}). Check your sell orders are on Kraken. No extra buys.", 3))
     al["tier"] = t
     bt = tier(s["bottom_count"])
     if bt > al.get("btier", 0) and not first_run:
         names = [k.replace("_", " ") for k, b in s["bottoms"].items() if b["on"]]
         out.append((f"🟡 HEADS UP · {sym} looks washed out at {money(s['price'])} ({s['bottom_count']}/6: "
-                    f"{', '.join(names)}). Make sure your buy orders are set.", 3))
+                    f"{', '.join(names)}). Stick to the schedule; don't sell Core.", 3))
     al["btier"] = bt
     return out
+
+
+def trend_word(s):
+    p, a, b = s.get("price"), s.get("ma200"), s.get("ma200_prev")
+    if not a or not p:
+        return "trend n/a"
+    up = (a > b) if b else None
+    if p > a and up is not False:
+        return "🐂 bull"
+    if p < a and up is not True:
+        return "🐻 bear"
+    return "↔ sideways"
+
+
+def local_now(plan, now=None):
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(plan.get("timezone", "America/Vancouver"))
+    return datetime.fromtimestamp(now if now is not None else now_ts(), tz)
+
+
+def daily_summary(coins, plan, digest, headsups, now=None):
+    """One ping a day at plan["summary_hour"] (local time): buy-day reminder + each coin's weather.
+    Returns (alert or None, new digest state)."""
+    loc = local_now(plan, now)
+    today = loc.strftime("%Y-%m-%d")
+    if (digest or {}).get("last_date") == today or loc.hour < int(plan.get("summary_hour", 18)):
+        return None, digest or {}
+    days = [int(d) for d in plan.get("days", [1, 15])]
+    buy_day = loc.day in days
+    lines = [f"📊 Crypto Coach · {loc.strftime('%a %b')} {loc.day}"]
+    if buy_day:
+        lines.append(f"🗓 BUY DAY: {', '.join(c['symbol'] for c in coins if not c.get('stale'))}. Buy your planned amounts and log them in the app.")
+    for c in coins:
+        if c.get("stale"):
+            lines.append(f"{c['symbol']}: data stale")
+            continue
+        lines.append(f"{c['symbol']} {money(c['price'])} ({c.get('change_24h') or 0:+.1f}% 24h) · {trend_word(c)} · "
+                     f"🌡 {c.get('auto_flag_count') or 0}/6 hot · 🧊 {c.get('bottom_count') or 0}/6 washed out")
+    lines += [h for h, _ in headsups]
+    if not buy_day and not headsups:
+        lines.append("Nothing to do. Your orders are on Kraken; Kraken pings you if one fills.")
+    return ("\n".join(lines), 4 if (buy_day or headsups) else 3), {"last_date": today}
 
 
 # ----------------------------------------------------------------- main
@@ -482,10 +515,19 @@ def main():
         s["flags"].update(news.news_flags(m, s.get("change_7d"), th, news_ok, trending.get("ok", False)))
         s["auto_flag_count"] = sum(1 for f in s["flags"].values() if f["on"])
 
-    alerts = []
+    headsups = []
     for s in out:
         if not s.get("stale"):
-            alerts += build_alerts(s, first_run or s["symbol"] in new_coin)
+            headsups += build_alerts(s, first_run or s["symbol"] in new_coin)
+    plan = cfg.get("plan") or {}
+    prev_digest = (prev or {}).get("digest") or {}
+    pending = (prev_digest.get("pending") or []) + [h for h, _ in headsups]   # held until the next summary
+    if first_run:
+        summary, digest = None, {"last_date": local_now(plan).strftime("%Y-%m-%d")}
+    else:
+        summary, digest = daily_summary(out, plan, prev_digest, [(h, 3) for h in pending])
+        if summary is None:
+            digest = dict(prev_digest, pending=pending[-12:])
 
     doc = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -495,6 +537,9 @@ def main():
         "rules": engine.rules_from(cfg.get("rules")),
         "coins": out,
         "news": dict(state, sources=status, trending=trending),
+        "plan": {"days": plan.get("days", [1, 15]), "summary_hour": plan.get("summary_hour", 18),
+                 "timezone": plan.get("timezone", "America/Vancouver")},
+        "digest": digest,
     }
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with open(a.out, "w") as f:
@@ -505,10 +550,11 @@ def main():
     if first_run and out:
         lines = [f"✅ Crypto Coach watcher is live. Tracking {', '.join(c['symbol'] for c in out)}."]
         for c in out:
-            lines.append(f"{c['symbol']} {money(c['price'])} · top flags {c['auto_flag_count']}/6 · bottom signals {c['bottom_count']}/3")
+            lines.append(f"{c['symbol']} {money(c['price'])} · top flags {c['auto_flag_count']}/6 · bottom signals {c['bottom_count']}/6")
+        lines.append("From now on: one summary a day at the time set in coins.json (default 6 pm), with buy-day reminders.")
         notify.send_all([("\n".join(lines), 3)])
-    elif alerts:
-        notify.send_all(alerts)
+    elif summary:
+        notify.send_all([summary])
 
 
 if __name__ == "__main__":

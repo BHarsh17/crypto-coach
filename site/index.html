@@ -131,10 +131,10 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
   </header>
   <div id="banners"></div>
   <nav id="tabs">
-    <button data-t="missions" class="on">🎯 Missions</button>
-    <button data-t="reserve">💰 Dip reserve</button>
+    <button data-t="missions" class="on">🎯 Today</button>
+    <button data-t="orders">📋 Orders &amp; lots</button>
+    <button data-t="market">🌡 Market</button>
     <button data-t="journal">📓 Journal</button>
-    <button data-t="news">📰 News</button>
     <button data-t="backtest">🧪 Backtest</button>
     <button data-t="setup">⚙️ Setup</button>
   </nav>
@@ -146,7 +146,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "4.3.0";
+const APP_VERSION = "5.1.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -182,7 +182,7 @@ const today=()=>new Date().toISOString().slice(0,10);
 /* ---------- game ---------- */
 function level(){let i=0;LEVELS.forEach((l,k)=>{if(S.xp>=l[0])i=k;});return i;}
 function addXP(n,text,coin,type){S.xp=Math.max(0,S.xp+n);S.log.unshift({ts:Date.now(),type:type||"info",coin:coin||"",text,xp:n});S.log=S.log.slice(0,300);
-  const before=level();save();toast((n>=0?"+":"")+n+" XP · "+text.split(".")[0]);
+  const before=level();save();toast((n>=0?"+":"")+n+" XP · "+text.split(/\.(\s|$)/)[0]);
   if(level()>before)setTimeout(()=>toast("⬆️ Level up: "+LEVELS[level()][1]),1400);}
 function checkIn(){const t=today();if(S.streak.last===t)return false;
   const y=new Date(Date.now()-864e5).toISOString().slice(0,10);
@@ -190,54 +190,89 @@ function checkIn(){const t=today();if(S.streak.last===t)return false;
   addXP(10,"Daily check-in. Doing nothing on a no-signal day is a win.","","checkin");return true;}
 function toast(t){const el=document.getElementById("toast");el.textContent=t;el.classList.add("show");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("show"),2200);}
 
-/* ---------- rules engine ---------- */
+/* ---------- flags ---------- */
 const NFLAGS=Object.keys(FLAG_INFO).length;
 function ovr(sym,k){const o=(C(sym).ovr||{})[k];return o&&Date.now()-o.ts<7*864e5?o:null;}
 function flagOn(c,k){const o=ovr(c.symbol,k);if(o)return o.v;return !!(c.flags&&c.flags[k]&&c.flags[k].on);}
 function flagsOn(c){return Object.keys(FLAG_INFO).filter(k=>flagOn(c,k));}
 function tierOf(n){return n<3?0:n===3?1:n<=5?2:3;}
-function coinBudget(sym){return (S.reserve.total||0)*((S.reserve.alloc[sym]||0)/100);}
-function coinAvail(sym){return coinBudget(sym)-(S.spent[sym]||0);}
+/* ---------- v5 plan: scheduled buys, 70/30 split, monthly lots, +20/+40 sells, -20/-40 buy-backs ---------- */
+const FEE=0.0025, TP=[20,40], BB=[20,40], MIN_ORDER=5, TINY=1e-12;
+function P(){S.plan=S.plan||{days:[1,15],core:70,amounts:{},bull:true};if(!S.plan.amounts)S.plan.amounts={};return S.plan;}
+function M(sym){const me=C(sym);
+  if(!me.v5){const old=(me.core||0)+(me.trade||0);me.v5={lots:[],sales:[],periods:{},snooze:{},nextId:1,migrated:old>0?old:0};
+    me.core=old;me.trade=0;save();}   // v4 holdings become Core: you were holding them, nothing is sold
+  return me.v5;}
+function ymdLocal(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+const fmtDate=t=>new Date(t).toLocaleDateString(undefined,{month:"short",day:"numeric"});
+function monthKey(ts){const d=new Date(ts==null?Date.now():ts);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}
+function lotName(l){const [y,m]=l.month.split("-");return new Date(+y,+m-1,1).toLocaleDateString(undefined,{month:"short",year:"2-digit"});}
+function planDays(){const ds=(P().days||[1,15]).map(x=>Math.min(28,Math.max(1,Math.round(+x)||0))).filter(x=>x>=1);return [...new Set(ds.length?ds:[1])].sort((a,b)=>a-b);}
+function periodStart(now){now=now||new Date();const ds=planDays(),d=now.getDate(),past=ds.filter(x=>x<=d);
+  return past.length?new Date(now.getFullYear(),now.getMonth(),past[past.length-1]):new Date(now.getFullYear(),now.getMonth()-1,ds[ds.length-1]);}
+function nextBuyDay(now){now=now||new Date();const ds=planDays(),fut=ds.filter(x=>x>now.getDate());
+  return fut.length?new Date(now.getFullYear(),now.getMonth(),fut[0]):new Date(now.getFullYear(),now.getMonth()+1,ds[0]);}
+function planAmt(sym){return +(P().amounts[sym]||0);}
+/* month rollover: buy-backs live until the month ends; unfilled ones are cancelled and their cash
+   joins the next 3 buy days at the new month's prices (all of it to Trade, since it was Trade money) */
+const ROLL_DAYS=3;
+function R(sym){const v=M(sym);v.roll=v.roll||{usd:0,left:0};return v.roll;}
+function rollExtra(sym){const r=R(sym);return r.usd>0.005&&r.left>0?r.usd/r.left:0;}
+function expiredSales(sym){const mk=monthKey();return M(sym).sales.filter(s=>monthKey(s.ts)<mk&&s.levels.some(x=>!x.done));}
+function buyDue(sym){return (planAmt(sym)>0||rollExtra(sym)>0)&&!M(sym).periods[ymdLocal(periodStart())];}
 
-/* v4: the watcher keeps the orders (take-profits, buy-backs, dip ladder) from public prices.
-   This app turns them into amounts from your private holdings and tracks what you've done. */
-function V(me){me.v4=me.v4||{handled:{},baseline:null,sales:{},since:null};return me.v4;}
-function okey(o){return o.kind+":"+(+o.price).toFixed(6);}
-function isHandled(me,o){return !!V(me).handled[okey(o)];}
-function baselineTrade(me,cycle){const v=V(me);if(!v.baseline||v.baseline.cycle!==cycle)v.baseline={cycle,trade:me.trade};return v.baseline.trade;}
-function saleFor(me,o){return V(me).sales["take_profit:"+(+o.sale_price).toFixed(6)];}
-function orderAmount(c,o){const me=C(c.symbol);
-  if(o.kind==="take_profit"){const q=Math.max(0,Math.min(me.trade,baselineTrade(me,(c.engine||{}).cycle)*o.share/100));return {q,usd:q*o.price};}
-  if(o.kind==="buy_back"){const sale=saleFor(me,o);if(!sale)return {usd:null,q:null};const usd=sale.got*o.share/100;return {usd,q:usd/o.price};}
-  const usd=coinBudget(c.symbol)*o.share/100;return {usd,q:usd?usd/o.price:0};}
-function orderLabel(o){return o.kind==="take_profit"?`Sell · +${o.pct}% take-profit`:o.kind==="buy_back"?`Buy back · −${o.drop}% below ${money(o.sale_price)}`:`Dip rung ${o.rung} · −${o.drop}%`;}
-function filledEvents(c){const me=C(c.symbol),v=V(me),since=(v.since||0)/1000;
-  return (((c.engine||{}).events)||[]).filter(e=>e.ts>=since-1&&!isHandled(me,e));}
-function liveCrossed(c){const me=C(c.symbol);if(!c.live)return [];
-  return (c.orders||[]).filter(o=>!isHandled(me,o)&&(o.kind==="take_profit"?c.price>=o.price:c.price<=o.price));}
-function nextOrders(c){const os=(c.orders||[]);const sells=os.filter(o=>o.kind==="take_profit").sort((a,b)=>a.price-b.price);
-  const buys=os.filter(o=>o.kind!=="take_profit").sort((a,b)=>b.price-a.price);return {sell:sells[0],buy:buys[0]};}
+/* trend: price vs the 200-day average, and whether that average is rising (watcher sends ma200 and ma200_prev, 20 days earlier) */
+function trend(c){const p=c.price,a=c.ma200,b=c.ma200_prev;
+  if(!a)return {k:"none",label:"Trend: not enough history"};
+  const up=b?a>b:null;
+  if(p>a&&up!==false)return {k:"bull",label:`🐂 Bull trend · above the 200-day average${up?" (rising)":""}`};
+  if(p<a&&up!==true)return {k:"bear",label:`🐻 Bear trend · below the 200-day average${up===false?" (falling)":""}`};
+  return {k:"side",label:"↔ Sideways · mixed signals around the 200-day average"};}
 
-function directive(c){
-  const me=C(c.symbol),v=V(me);if(!v.since){v.since=Date.now();save();}
-  if(!IS_DEMO && ageMin()>360) return {k:"wait",title:"Rules paused",text:`The watcher hasn't published for ${Math.round(ageMin()/60)} hours, so prices and orders could be out of date. Check the Actions tab on GitHub.`};
-  if(c.stale) return {k:"wait",title:"Data is stale",text:"The watcher couldn't refresh this coin last run. Waiting for fresh data."};
-  if(!c.engine) return {k:"wait",title:"Waiting for v4 data",text:"Your watcher hasn't run the v4 rules yet. This appears after the next run."};
-  const ev=filledEvents(c),lv=liveCrossed(c),pick=ev.length?{o:ev[0],src:"filled"}:lv.length?{o:lv[0],src:"live"}:null;
-  const on=flagsOn(c),n=on.length,bn=c.bottom_count||0,nx=nextOrders(c);
-  if(pick){const o=pick.o,a=orderAmount(c,o),sym=c.symbol,verb=pick.src==="live"?"is at":"reached";
-    if(o.kind==="take_profit") return {k:"trim",title:`JUMP OUT · +${o.pct}% take-profit`,
-      text:`${sym} ${verb} ${money(o.price)}. Sell ${qty(a.q)} ${sym} (${o.share}% of your trade bucket). If your Kraken order already filled, just log it.`,act:"sell",o,a};
-    if(o.kind==="buy_back") return {k:"buy",title:"JUMP IN · buy back",
-      text:`${sym} ${verb} ${money(o.price)}, ${o.drop}% below your sale at ${money(o.sale_price)}. Buy back with ${a.usd!=null?money(a.usd)+" (≈ "+qty(a.q)+" "+sym+")":o.share+"% of that sale's money"}.`,act:"buy",o,a};
-    return {k:"buy",title:`JUMP IN · dip rung ${o.rung}`,
-      text:`${sym} ${verb} ${money(o.price)} (−${o.drop}%). ${a.usd>0?"Spend "+money(a.usd)+" (≈ "+qty(a.q)+" "+sym+") of your dip reserve.":"Spend this rung's share of your dip reserve (set the reserve in Setup to see dollars)."}`,act:"buy",o,a};}
-  const why=n?"Flags on: "+on.map(k=>FLAG_INFO[k].n).join(", "):"";
-  if(n>=3) return {k:"stop",title:`HEADS UP · overheated (${n}/${NFLAGS})`,text:`Something's going on. Make sure your take-profit orders are set on Kraken${nx.sell?`: next sell at ${money(nx.sell.price)}`:""}.`,why};
-  if(bn>=3) return {k:"zone",title:`HEADS UP · washed out (${bn}/${NBOTTOMS})`,text:`Something's going on. Make sure your buy orders are set on Kraken${nx.buy?`: next buy at ${money(nx.buy.price)}`:""}.`,
-    why:"Signals on: "+Object.keys(c.bottoms||{}).filter(k=>c.bottoms[k].on).map(k=>BOTTOM_INFO[k]||k).join(", ")};
-  return {k:"hold",title:"Hold",text:`Nothing to do. Your orders are waiting${nx.sell?`: next sell ${money(nx.sell.price)}`:""}${nx.buy?`${nx.sell?",":":"} next buy ${money(nx.buy.price)}`:""}.`,why};
-}
+/* lots: one per calendar month (until it first sells); each lot sells half at +20%, the rest at +40% */
+function lotPer(l){return l.q>TINY?l.cost/l.q:0;}
+function lotTP(l,k){return lotPer(l)*(1+TP[k]/100);}
+function addTrade(sym,q,usd,ts){if(q<=TINY)return null;const v=M(sym),mk=monthKey(ts);
+  let l=v.lots.find(x=>x.month===mk&&!x.sold&&!x.runner);
+  if(l){l.q+=q;l.cost+=usd;l.q0=l.q;l.done=[false,false];}
+  else{l={id:v.nextId++,month:mk,q,q0:q,cost:usd,done:[false,false],runner:false,sold:false};v.lots.push(l);}
+  return l;}
+function tradeQty(sym){return M(sym).lots.reduce((a,l)=>a+l.q,0);}
+function waitingUsd(sym){return M(sym).sales.reduce((a,s)=>a+s.levels.filter(x=>!x.done).reduce((b,x)=>b+x.usd,0),0)+R(sym).usd;}
+function okey(o){return o.kind+":"+(o.lot?o.lot.id+":"+o.k:o.sale.id+":"+o.i);}
+function openOrders(sym,c){const v=M(sym),out=[],bullNow=P().bull&&c&&trend(c).k==="bull";
+  for(const l of v.lots){
+    if(l.runner){out.push({kind:"runner",lot:l,k:2,price:lotPer(l)*2,q:l.q,label:`${lotName(l)} lot · runner +100%`});continue;}
+    const q1=l.done[0]?0:Math.min(l.q0/2,l.q);
+    if(!l.done[0])out.push({kind:"sell",lot:l,k:0,price:lotTP(l,0),q:q1,label:`${lotName(l)} lot · +${TP[0]}%`});
+    if(!l.done[1]){const rest=l.q-q1;out.push({kind:"sell",lot:l,k:1,price:lotTP(l,1),q:bullNow?rest/2:rest,bull:bullNow,
+      label:`${lotName(l)} lot · +${TP[1]}%${bullNow?" (bull: keep half)":""}`});}}
+  for(const s of v.sales)s.levels.forEach((x,i)=>{if(!x.done)out.push({kind:"buyback",sale:s,i,price:x.price,usd:x.usd,
+    label:`Buy back −${x.pct}% · from ${fmtDate(s.ts)} sale`});});
+  return out.sort((a,b)=>b.price-a.price);}
+
+function directive(c){const sym=c.symbol,v=M(sym),px=c.price,now=Date.now();
+  if(c.error)return {k:"wait",title:"⏸ Rules paused",text:`The watcher couldn't update ${sym}: ${c.error}`,why:"Showing its last good data."};
+  if(DATA&&!IS_DEMO&&ageMin()>360)return {k:"wait",title:"⏸ Data is stale",text:"The watcher hasn't published for 6+ hours, so prices may be old.",why:"Check GitHub → Actions."};
+  const sn=k=>v.snooze[k]&&now-v.snooze[k]<12*36e5, os=openOrders(sym,c);
+  const sell=os.filter(o=>o.kind!=="buyback"&&px>=o.price&&!sn(okey(o))).sort((a,b)=>a.price-b.price)[0];
+  if(sell)return {k:"trim",title:"🔴 SELL · take profit",act:"sell",o:sell,text:`Sell ${qty(sell.q)} ${sym} at ${money(sell.price)} · ${sell.label}.`,why:"This lot reached its target. Core is never sold."};
+  const run=v.lots.find(l=>l.runner&&c.ma50&&px<c.ma50&&!sn("runner:"+l.id+":2"));
+  if(run){const o={kind:"runner",lot:run,k:2,price:px,q:run.q,label:`${lotName(run)} lot · runner exit`,exit:true};
+    return {k:"trim",title:"🔴 SELL · runner exit",act:"sell",o,text:`Sell the ${qty(run.q)} ${sym} runner at market. The bull run is fading (price closed below its 50-day average).`,why:"Bull mode kept half of this lot for a bigger move. That move is over."};}
+  const bb=os.filter(o=>o.kind==="buyback"&&px<=o.price&&!sn(okey(o)))[0];
+  if(bb)return {k:"buy",title:"🟢 BUY BACK",act:"buyback",o:bb,text:`Buy back ${money(bb.usd)} of ${sym} at ${money(bb.price)} · ${bb.label}.`,why:"Half the money from that sale, 20% / 40% below the sale price."};
+  const ex=expiredSales(sym);
+  if(ex.length){const n=ex.reduce((a,s)=>a+s.levels.filter(x=>!x.done).length,0),usd=ex.reduce((a,s)=>a+s.levels.filter(x=>!x.done).reduce((b,x)=>b+x.usd,0),0);
+    return {k:"zone",title:"🧹 NEW MONTH · re-baseline",act:"roll",text:`Cancel your ${n} unfilled ${sym} buy-back order${n>1?"s":""} on Kraken. Its ${money(usd)} joins your next ${ROLL_DAYS} buy days at this month's prices.`,why:"Old buy-back prices may never come back. This keeps every dollar working off the current baseline."};}
+  if(!planAmt(sym)&&!v.lots.length&&!(C(sym).core>0)&&!rollExtra(sym))return {k:"wait",title:"👋 Not started",text:`Set how much to buy on each buy day for ${sym} in Setup.`,why:`Buy days: ${planDays().map(d=>d+(d===1?"st":d===2?"nd":d===3?"rd":"th")).join(" and ")} of the month.`};
+  if(buyDue(sym)){const a=planAmt(sym),cs=P().core/100,e=rollExtra(sym);
+    return {k:"buy",title:"🗓 BUY DAY",act:"buyday",text:`Buy ${money(a+e)} of ${sym}: ${money(a*cs)} to Core, ${money(a*(1-cs)+e)} to the ${lotName({month:monthKey()})} Trade lot${e?` (includes ${money(e)} rolled-over sale cash)`:""}.`,why:"Scheduled buy. Don't wait for a dip: over 10 years, timing didn't beat the schedule."};}
+  const nf=flagsOn(c).length;
+  if(nf>=3)return {k:"stop",title:"🟡 HEADS UP · overheated",text:`${nf} of ${NFLAGS} top flags are on. Check your sell orders are on Kraken. No extra buys beyond the schedule.`,why:"Context, not a trigger. Core is never sold."};
+  if((c.bottom_count||0)>=3)return {k:"zone",title:"🟡 HEADS UP · washed out",text:`${c.bottom_count} of ${NBOTTOMS} bottom signals are on. Stick to the schedule. Your buy-backs are waiting lower.`,why:"Context, not a trigger. This is when people panic-sell. Don't."};
+  const ns=os.filter(o=>o.kind!=="buyback").sort((a,b)=>a.price-b.price)[0],nb=os.find(o=>o.kind==="buyback");
+  return {k:"hold",title:"✅ HOLD",text:`Nothing to do.${ns?` Next sell ${money(ns.price)}.`:""}${nb?` Next buy-back ${money(nb.price)}.`:""} Next buy day ${fmtDate(nextBuyDay())}.`,why:trend(c).label};}
 
 /* ---------- render ---------- */
 function liveSpark(c){const v=(c.spark||[]).slice();if(c.live&&v.length)v[v.length-1]=c.price;return v;}
@@ -245,6 +280,146 @@ function spark(vals,col){if(!vals||vals.length<2)return "";const mn=Math.min(...
   const pts=vals.map((v,i)=>[i/(vals.length-1)*w,h-3-(v-mn)/((mx-mn)||1)*(h-6)]);
   const d=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d} L${w} ${h} L0 ${h}Z" fill="${col}" opacity=".08"/><path d="${d}" fill="none" stroke="${col}" stroke-width="1.6"/><circle cx="${pts[pts.length-1][0]-2}" cy="${pts[pts.length-1][1]}" r="2.6" fill="${col}"/></svg>`;}
+function weather(c){const nf=flagsOn(c).length,nb=c.bottom_count||0,t=trend(c);
+  return `<span class="pill" title="${esc(t.label)}">${t.k==="bull"?"🐂 Bull":t.k==="bear"?"🐻 Bear":t.k==="side"?"↔ Sideways":"– Trend"}</span>
+    <span class="pill" style="${nf>=3?"color:var(--red);border-color:#6a2635":""}" title="Top-warning flags">🌡 ${nf}/${NFLAGS} hot</span>
+    <span class="pill" style="${nb>=3?"color:var(--ice);border-color:#1f5560":""}" title="Bottom signals">🧊 ${nb}/${NBOTTOMS} washed out</span>`;}
+
+function renderMissions(){
+  if(!DATA){return FETCH_ERR?`<div class="card">Couldn't load signals from <span class="mono">${esc(S.settings.dataUrl)}</span> (${esc(FETCH_ERR)}). If you just set up GitHub, wait for the first watcher run to finish, then refresh.</div>`:`<div class="card">Loading signals…</div>`;}
+  const nb=nextBuyDay();
+  let h=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="muted small">Buy on schedule · ${P().core}% Core (never sold) · ${100-P().core}% Trade (sells +${TP[0]}/+${TP[1]}%, buy-backs −${BB[0]}/−${BB[1]}%) · next buy day <b>${fmtDate(nb)}</b></div>
+    <div class="row"><button class="b" onclick="addCoin()">＋ Add coin</button><button class="b go" onclick="doCheckIn()" ${S.streak.last===today()?"disabled":""}>✓ Daily check-in</button></div></div><div class="grid">`;
+  for(const c0 of DATA.coins){const c=eff(c0),sym=c.symbol,me=C(sym),v=M(sym),d=directive(c);
+    const col=(c.change_7d||0)>=0?"var(--green)":"var(--red)",tq=tradeQty(sym),w=waitingUsd(sym),val=(me.core+tq)*c.price+w;
+    h+=`<div class="card"><div class="coinhead"><div><div class="sym">${esc(sym)}</div><div class="nm">${esc(c.name)} · ${c.drawdown_pct!=null?pc(c.drawdown_pct)+" from 2y high":""}</div></div>
+      <div class="px"><b class="mono" id="px-${sym}">${money(c.price)}</b><div class="small mono"><span class="pill ${c.live?"lv":""}" id="src-${sym}">${c.live?"● live":"watcher"}</span> <br><span id="ch-${sym}" class="${c.change_24h>=0?"up":"dn"}">${pc(c.change_24h)} 24h</span> · <span class="${c.change_7d>=0?"up":"dn"}">${pc(c.change_7d)} 7d</span></div></div></div>
+      <div style="cursor:pointer" id="sp-${sym}" onclick="openChart('${sym}')" title="Open chart">${spark(liveSpark(c),col)}</div>
+      <div class="mission m-${d.k}" title="${esc(d.text+(d.why?"\n"+d.why:""))}"><div class="k">${esc(d.title)}</div><div class="t">${esc(d.text)}</div>${d.why?`<div class="why">${esc(d.why)}</div>`:""}
+      <div class="btns">${actionButtons(c,d)}</div></div>
+      <div class="buckets"><div class="bk"><small>🔒 Core</small><b class="mono">${qty(me.core)}</b><small>never sold</small></div>
+        <div class="bk"><small>🔁 Trade</small><b class="mono">${qty(tq)}</b><small>${v.lots.length} lot${v.lots.length===1?"":"s"}</small></div>
+        <div class="bk"><small>💵 Waiting</small><b class="mono">${money(w)}</b><small>for buy-backs</small></div></div>
+      <div class="row small" style="margin-top:8px;justify-content:space-between"><span class="muted">Total value</span><span class="mono">${money(val)}</span></div>
+      <div class="row" style="margin-top:8px;gap:6px;cursor:pointer" onclick="TAB='market';render()">${weather(c)}</div>
+    </div>`;}
+  return h+`</div>`;}
+
+function actionButtons(c,d){const s=c.symbol;
+  if(d.act==="sell")return `<button class="b pri" onclick="logSell('${s}')">I sold ✓</button><button class="b" onclick="notYet('${s}')">Not filled yet</button>`;
+  if(d.act==="buyback")return `<button class="b pri" onclick="logBuyBack('${s}')">I bought ✓</button><button class="b" onclick="notYet('${s}')">Not filled yet</button>`;
+  if(d.act==="roll")return `<button class="b pri" onclick="confirmRoll('${s}')">Done, cancelled ✓</button><button class="b" onclick="TAB='orders';render()">See orders</button>`;
+  if(d.act==="buyday")return `<button class="b go" onclick="logBuyDay('${s}',true)">I bought ✓</button><button class="b" onclick="skipBuyDay('${s}')">Skip this one</button>`;
+  return `<button class="b" onclick="logBuyDay('${s}',false)">Log a buy</button><button class="b" onclick="openChart('${s}')">📈 Chart</button>`;}
+
+function renderOrders(){if(!DATA)return `<div class="card">Loading…</div>`;
+  let h=`<div class="card" style="margin-bottom:14px"><b>Your orders on Kraken</b><p class="small muted" style="margin:4px 0 0">Place these as <b>limit orders</b> on Kraken Pro (good-till-cancelled). Kraken notifies you when one fills; then tap the mission and log it here. Never put a sell order on your Core coins.</p></div><div class="grid">`;
+  for(const c0 of DATA.coins){const c=eff(c0),sym=c.symbol,v=M(sym),os=openOrders(sym,c);
+    h+=`<div class="card"><div class="row" style="justify-content:space-between"><b class="sym">${sym}</b><span class="mono">${money(c.price)}</span></div>
+      <div class="sect"><span>Open orders</span><span class="mono">${os.length}</span></div>
+      ${os.length?`<table class="small">${os.map(o=>`<tr><td style="color:${o.kind==="buyback"?"var(--green)":"var(--red)"}">${o.kind==="buyback"?"BUY":"SELL"}</td><td>${esc(o.label)}</td><td class="mono">${money(o.price)}</td><td class="mono">${o.kind==="buyback"?money(o.usd):qty(o.q)+" "+sym}</td></tr>`).join("")}</table>`:`<div class="small muted">None yet. Orders appear after your first buy day.</div>`}
+      <div class="sect"><span>Trade lots</span><span class="mono">${qty(tradeQty(sym))} ${sym}</span></div>
+      ${v.lots.length?`<table class="small"><tr><th>Lot</th><th>Coins</th><th>Cost/coin</th><th>+${TP[0]}%</th><th>+${TP[1]}%</th></tr>${v.lots.map(l=>`<tr><td>${lotName(l)}${l.runner?" 🏃":""}</td><td class="mono">${qty(l.q)}</td><td class="mono">${money(lotPer(l))}</td>
+        <td class="mono ${l.done[0]?"muted":""}">${l.done[0]?"sold ✓":money(lotTP(l,0))}</td><td class="mono ${l.done[1]?"muted":""}">${l.runner?"runner":l.done[1]?"sold ✓":money(lotTP(l,1))}</td></tr>`).join("")}</table>`:`<div class="small muted">No Trade lots yet.</div>`}
+      ${R(sym).usd>0.005?`<div class="sect"><span>🔄 Rolled-over cash</span><span class="mono">${money(R(sym).usd)} over ${R(sym).left} buy day${R(sym).left===1?"":"s"}</span></div>`:""}
+      <div class="sect"><span>🔒 Core</span><span class="mono">${qty(C(sym).core)} ${sym}</span></div></div>`;}
+  return h+`</div>`;}
+
+function renderMarket(){if(!DATA)return `<div class="card">Loading…</div>`;
+  let h=`<div class="card" style="margin-bottom:14px"><b>Market read</b><p class="small muted" style="margin:4px 0 0">What's happening, not what will happen. These never trade by themselves; they explain the moves and help you stay calm. 3+ top flags = overheated, 3+ bottom signals = washed out.</p></div><div class="grid">`;
+  for(const c0 of DATA.coins){const c=eff(c0),nflags=flagsOn(c).length,t=trend(c);
+    h+=`<div class="card"><div class="row" style="justify-content:space-between"><b class="sym">${c.symbol}</b><span class="mono">${money(c.price)}</span></div>
+      <div class="small" style="margin-top:6px">${esc(t.label)}</div>
+      <div class="small muted mono" style="margin-top:4px">RSI ${c.rsi_daily??"–"} daily · ${c.rsi_weekly??"–"} weekly · ${c.drawdown_pct!=null?pc(c.drawdown_pct)+" from 2y high":""} · 200-day avg ${money(c.ma200)}</div>
+      <div class="sect"><span>Top-warning flags</span><span class="mono">${nflags}/${NFLAGS}</span></div>
+      <div class="meter">${[...Array(NFLAGS)].map((_,i)=>`<i class="${i<nflags?"f":""}"></i>`).join("")}</div>
+      <div class="chips" style="margin-top:8px">${Object.keys(FLAG_INFO).map(k=>{const f=(c.flags||{})[k],on=flagOn(c,k),o=ovr(c.symbol,k),info=FLAG_INFO[k];
+        const det=(f?f.detail:"no data yet")+(o?` · set ${o.v?"ON":"OFF"} by you (tap to change)`:(info.ov?" · tap to override":""));
+        return `<div class="chip ${on?"on":""} ${info.ov?"man":""}" ${info.ov?`onclick="cycleOverride('${c.symbol}','${k}')"`:""} title="${esc(det)}"><span class="d"></span><span>${info.n}<small>${esc(det)}</small></span></div>`}).join("")}</div>
+      <div class="sect"><span>Bottom signals</span><span class="mono">${c.bottom_count}/${NBOTTOMS}</span></div>
+      <div class="meter">${[...Array(NBOTTOMS)].map((_,i)=>`<i style="${i<c.bottom_count?"background:var(--ice)":""}"></i>`).join("")}</div>
+      <div class="chips" style="margin-top:8px">${Object.keys(c.bottoms||{}).map(k=>`<div class="chip ${c.bottoms[k].on?"bon":""}"><span class="d"></span><span>${BOTTOM_INFO[k]||k}<small>${esc(c.bottoms[k].detail)}</small></span></div>`).join("")}</div></div>`;}
+  return h+`</div><div style="margin-top:14px">${renderNews()}</div>`;}
+
+function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S.coins),p=P(),ds=planDays();
+  return `<div class="card"><b>Your plan</b><p class="small muted">Buy on these days every month. Each buy goes ${p.core}% to Core (never sold) and ${100-p.core}% to that month's Trade lot.</p>
+    ${DATA&&DATA.plan&&DATA.plan.days.join(",")!==ds.join(",")?`<div class="banner stale" style="margin:0 0 8px">Your phone's daily ping uses buy days <b>${DATA.plan.days.join(" and ")}</b> (from GitHub). To match these, add <span class="mono">"plan": {"days": [${ds.join(", ")}]}</span> to coins.json.</div>`:""}
+    <div class="three"><div><label>Buy day 1</label><input type="number" min="1" max="28" id="pd1" value="${ds[0]||1}"></div><div><label>Buy day 2 (blank = none)</label><input type="number" min="1" max="28" id="pd2" value="${ds[1]||""}"></div><div><label>Buy day 3 (blank = none)</label><input type="number" min="1" max="28" id="pd3" value="${ds[2]||""}"></div></div>
+    <div class="two"><div><label>Core share %</label><input type="number" min="0" max="100" id="pcore" value="${p.core}"></div><div><label>Bull mode</label><select id="pbull"><option value="1" ${p.bull?"selected":""}>On: in a bull trend, the +40% sell keeps half as a runner</option><option value="0" ${p.bull?"":"selected"}>Off</option></select></div></div>
+    <table style="margin-top:10px"><tr><th>Coin</th><th>$ per buy day</th><th>🔒 Core coins</th><th>Trade coins</th></tr>
+    ${syms.map(s=>{const m=C(s);M(s);return `<tr><td><b>${s}</b></td><td><input type="number" step="any" data-f="amt" data-s="${s}" value="${p.amounts[s]||""}"></td><td><input type="number" step="any" data-f="core" data-s="${s}" value="${m.core?+(+m.core).toPrecision(8):""}"></td><td class="mono">${qty(tradeQty(s))} <button class="b" onclick="addLot('${s}')">＋ lot</button></td></tr>`}).join("")}</table>
+    <p class="small muted">Already hold coins? Put them in Core if you're keeping them; use ＋ lot for coins you want the sell ladder to manage (enter what you paid). Your earlier holdings were moved to Core automatically.</p>
+    <div class="two"><div><label>Your GitHub repo URL (for "Add coin")</label><input id="repoUrl" placeholder="https://github.com/you/crypto-coach" value="${esc(S.settings.repoUrl||"")}"></div>
+    <div><label>Signals URL</label><input id="dataUrl" value="${esc(S.settings.dataUrl)}"></div></div>
+    <div class="btns"><button class="b pri" onclick="saveSetup()">Save</button></div></div>
+    <div class="card" style="margin-top:14px"><b>Backup</b><p class="small muted">Your plan, lots and journal live in this browser only. Copy a backup now and then; paste it to restore on another device.</p>
+    <div class="btns"><button class="b" onclick="copyBackup()">Copy backup</button><button class="b" onclick="restore()">Restore from backup</button><button class="b warn" onclick="wipe()">Reset everything</button></div></div>`;}
+
+function render(){renderHeader();const v=document.getElementById("view");
+  v.innerHTML=TAB==="missions"?renderMissions():TAB==="orders"?renderOrders():TAB==="market"?renderMarket():TAB==="journal"?renderJournal():TAB==="backtest"?renderBacktest():renderSetup();
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB));}
+
+/* ---------- logging ---------- */
+function curO(sym){return directive(eff(coinData(sym)));}
+function logBuyDay(sym,scheduled){const c=eff(coinData(sym)),e=scheduled?rollExtra(sym):0,a=(planAmt(sym)+e)||"",cs=P().core;
+  modal(`<h3>${scheduled?"Buy day":"Log a buy"} · ${sym}</h3><p class="small muted">${cs}% goes to Core (never sold), ${100-cs}% to the ${lotName({month:monthKey()})} Trade lot.</p>
+  <div class="two"><div><label>Spent ($)</label><input type="number" step="any" id="mAmt" value="${a}"></div><div><label>Price paid</label><input type="number" step="any" id="mPx" value="${(+c.price).toPrecision(6)}"></div></div>
+  <div class="btns"><button class="b pri" onclick="confirmBuyDay('${sym}',${scheduled})">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function confirmBuyDay(sym,scheduled){const amt=+document.getElementById("mAmt").value,px=+document.getElementById("mPx").value;
+  if(!(amt>0&&px>0))return toast("Enter what you spent and the price");
+  const me=C(sym),v=M(sym),cs=P().core/100,q=amt*(1-FEE)/px;
+  // rolled-over sale cash (scheduled buys only) goes 100% to Trade; the rest splits Core / Trade
+  const r=R(sym),e=scheduled?Math.min(rollExtra(sym),amt):0,base=amt-e,coreUsd=base*cs,tradeUsd=amt-coreUsd;
+  me.core+=coreUsd*(1-FEE)/px;addTrade(sym,tradeUsd*(1-FEE)/px,tradeUsd);
+  if(e>0){r.usd=Math.max(0,r.usd-e);r.left=Math.max(0,r.left-1);if(r.usd<0.005){r.usd=0;r.left=0;}}
+  if(scheduled)v.periods[ymdLocal(periodStart())]="bought";
+  closeModal();addXP(15,`Bought ${money(amt)} of ${sym} at ${money(px)}: ${qty(coreUsd*(1-FEE)/px)} to Core, ${qty(tradeUsd*(1-FEE)/px)} to Trade${e>0?` (incl. ${money(e)} rolled-over cash)`:""}.`,sym,"buy");render();}
+function confirmRoll(sym){const v=M(sym),r=R(sym);let usd=0;
+  for(const s of expiredSales(sym))for(const x of s.levels)if(!x.done){usd+=x.usd;x.done=true;x.expired=true;}
+  v.sales=v.sales.filter(s=>s.levels.some(x=>!x.done));r.usd+=usd;r.left=ROLL_DAYS;save();
+  addXP(10,`Re-baselined ${sym}: ${money(usd)} of old buy-back cash joins the next ${ROLL_DAYS} buy days.`,sym,"roll");render();}
+function skipBuyDay(sym){M(sym).periods[ymdLocal(periodStart())]="skipped";addXP(5,`Skipped a buy day on ${sym}. Honest logging still counts.`,sym,"skip");render();}
+function notYet(sym){const d=curO(sym);if(!d.o)return;M(sym).snooze[okey(d.o)]=Date.now();save();toast("OK. I'll ask again in 12 hours. Your limit order is still working.");render();}
+function logSell(sym){const d=curO(sym);if(d.act!=="sell")return;const o=d.o;
+  modal(`<h3>Sold · ${sym}</h3><p class="small muted">${esc(o.label)}. Enter what actually filled on Kraken.</p>
+  <div class="two"><div><label>Coins sold</label><input type="number" step="any" id="mQ" value="${(+o.q).toPrecision(6)}"></div><div><label>Price</label><input type="number" step="any" id="mPx" value="${(+o.price).toPrecision(6)}"></div></div>
+  <div class="btns"><button class="b pri" onclick="confirmSell('${sym}')">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function applySell(sym,o,q,px,ts){const me=C(sym),v=M(sym),l=o.lot;q=Math.min(q,l.q);if(q<=TINY)return null;
+  const per=lotPer(l),got=q*px*(1-FEE);l.q-=q;l.cost-=per*q;l.sold=true;
+  if(o.kind==="runner"){l.runner=false;l.done=[true,true];}
+  else{l.done[o.k]=true;if(o.k===1&&o.bull&&l.q>TINY)l.runner=true;}
+  const levels=got/BB.length<MIN_ORDER?[{pct:BB[0],price:px*(1-BB[0]/100),usd:got,done:false}]
+    :BB.map(p=>({pct:p,price:px*(1-p/100),usd:got/BB.length,done:false}));
+  const sale={id:v.nextId++,lot:l.id,ts:ts||Date.now(),q,price:px,got,levels,rebought:0,swept:0};v.sales.push(sale);
+  v.lots=v.lots.filter(x=>{if(x.q<=TINY)return false;if(x.done[0]&&x.done[1]&&!x.runner){me.core+=x.q;return false;}return true;});
+  save();return sale;}
+function confirmSell(sym){const d=curO(sym);if(d.act!=="sell")return closeModal();const q=+document.getElementById("mQ").value,px=+document.getElementById("mPx").value;
+  if(!(q>0&&px>0))return toast("Enter coins sold and price");const s=applySell(sym,d.o,q,px);closeModal();
+  if(s)addXP(60,`Took profit: sold ${qty(s.q)} ${sym} at ${money(px)} for ${money(s.got)}. Buy-backs set at ${s.levels.map(x=>money(x.price)).join(" and ")}.`,sym,"sell");render();}
+function logBuyBack(sym){const d=curO(sym);if(d.act!=="buyback")return;const o=d.o;
+  modal(`<h3>Bought back · ${sym}</h3><p class="small muted">${esc(o.label)}. Any coins beyond what you sold go to Core.</p>
+  <div class="two"><div><label>Spent ($)</label><input type="number" step="any" id="mAmt" value="${(+o.usd).toFixed(2)}"></div><div><label>Price</label><input type="number" step="any" id="mPx" value="${(+o.price).toPrecision(6)}"></div></div>
+  <div class="btns"><button class="b pri" onclick="confirmBuyBack('${sym}')">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function applyBuyBack(sym,o,usd,px){const me=C(sym),v=M(sym),s=o.sale,lv=s.levels[o.i];
+  const q=usd*(1-FEE)/px;lv.done=true;s.rebought+=q;
+  const extra=Math.max(0,Math.min(q,s.rebought-s.q-s.swept));s.swept+=extra;me.core+=extra;
+  addTrade(sym,q-extra,usd*(q-extra)/q);v.sales=v.sales.filter(x=>x.levels.some(y=>!y.done));save();return {q,extra};}
+function confirmBuyBack(sym){const d=curO(sym);if(d.act!=="buyback")return closeModal();const usd=+document.getElementById("mAmt").value,px=+document.getElementById("mPx").value;
+  if(!(usd>0&&px>0))return toast("Enter what you spent and the price");const r=applyBuyBack(sym,d.o,usd,px);closeModal();
+  addXP(50,`Bought back ${qty(r.q)} ${sym} at ${money(px)}.${r.extra>0?` 🎉 ${qty(r.extra)} extra coins moved to Core.`:""}`,sym,"buyback");render();}
+function addLot(sym){modal(`<h3>Add an existing Trade lot · ${sym}</h3><p class="small muted">For coins you already hold and want the sell ladder (+${TP[0]}% / +${TP[1]}%) to manage.</p>
+  <div class="three"><div><label>Coins</label><input type="number" step="any" id="lQ"></div><div><label>Paid per coin ($)</label><input type="number" step="any" id="lPx"></div><div><label>Month bought</label><input type="month" id="lM" value="${monthKey()}"></div></div>
+  <div class="btns"><button class="b pri" onclick="confirmLot('${sym}')">Add lot</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function confirmLot(sym){const q=+document.getElementById("lQ").value,px=+document.getElementById("lPx").value,m=document.getElementById("lM").value||monthKey();
+  if(!(q>0&&px>0))return toast("Enter coins and price");const [y,mo]=m.split("-");addTrade(sym,q,q*px,new Date(+y,+mo-1,15).getTime());save();closeModal();toast("Lot added");render();}
+function saveSetup(){const p=P();p.days=["pd1","pd2","pd3"].map(id=>parseInt(document.getElementById(id).value)).filter(x=>x>=1&&x<=28);if(!p.days.length)p.days=[1];
+  p.core=Math.min(100,Math.max(0,parseFloat(document.getElementById("pcore").value)||70));p.bull=document.getElementById("pbull").value==="1";
+  document.querySelectorAll("[data-f]").forEach(i=>{const v=parseFloat(i.value)||0,s=i.dataset.s;if(i.dataset.f==="amt")p.amounts[s]=v;else C(s)[i.dataset.f]=v;});
+  S.settings.repoUrl=document.getElementById("repoUrl").value.trim();
+  const du=document.getElementById("dataUrl").value.trim()||"signals.json";const changed=du!==S.settings.dataUrl;S.settings.dataUrl=du;save();toast("Saved");if(changed)fetchData();else render();}
+
+
+
 
 function renderHeader(){const L=level(),cur=LEVELS[L][0],nxt=LEVELS[L+1]?LEVELS[L+1][0]:cur+1000;
   document.getElementById("lvlName").textContent=`Lv ${L+1} · ${LEVELS[L][1]}`;
@@ -261,60 +436,10 @@ function renderHeader(){const L=level(),cur=LEVELS[L][0],nxt=LEVELS[L+1]?LEVELS[
   const mm=DATA?DATA.coins.filter(c=>LIVE.mismatch[c.symbol]).map(c=>c.symbol):[];
   if(mm.length)b+=`<div class="banner stale">⚠️ Live price for ${mm.join(", ")} disagrees with the watcher by more than 25%, so the app is ignoring the live price for rules. Check the coin's "kraken"/"ws" names in coins.json.</div>`;
   document.getElementById("banners").innerHTML=b;
-  document.getElementById("foot").innerHTML=DATA?`Crypto Coach app v${APP_VERSION} · watcher ${DATA.version?"v"+esc(DATA.version):"(old)"} · Data: ${esc(DATA.source||"")} · signals updated ${new Date(DATA.generated_at).toLocaleString()}${IS_DEMO?"":" ("+Math.round(ageMin())+" min ago)"} · live prices: Kraken WebSocket. These are rule-based signals, not predictions or financial advice. Buys and sells come from your orders (take-profits, buy-backs, dip ladder). The 6 top flags and 6 bottom signals are heads-up warnings; tap News or FOMO to override for 7 days.`:"";}
+  document.getElementById("foot").innerHTML=DATA?`Crypto Coach app v${APP_VERSION} · watcher ${DATA.version?"v"+esc(DATA.version):"(old)"} · Data: ${esc(DATA.source||"")} · signals updated ${new Date(DATA.generated_at).toLocaleString()}${IS_DEMO?"":" ("+Math.round(ageMin())+" min ago)"} · live prices: Kraken WebSocket. These are rule-based signals, not predictions or financial advice. Your plan: scheduled buys, Core never sold, Trade lots sell at +20/+40% and buy back at −20/−40%. Flags and signals are context, not triggers.`:"";}
 
-function renderMissions(){
-  if(!DATA){return FETCH_ERR?`<div class="card">Couldn't load signals from <span class="mono">${esc(S.settings.dataUrl)}</span> (${esc(FETCH_ERR)}). If you just set up GitHub, wait for the first watcher run to finish, then refresh.</div>`:`<div class="card">Loading signals…</div>`;}
-  let h=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="muted small">One mission per coin. Do what it says, log it, earn XP.</div>
-    <div class="row"><button class="b" onclick="addCoin()">＋ Add coin</button><button class="b go" onclick="doCheckIn()" ${S.streak.last===today()?"disabled":""}>✓ Daily check-in</button></div></div><div class="grid">`;
-  for(const c0 of DATA.coins){const c=eff(c0),me=C(c.symbol),d=directive(c);
-    const col=(c.change_7d||0)>=0?"var(--green)":"var(--red)";
-    const nflags=flagsOn(c).length;
-    h+=`<div class="card"><div class="coinhead"><div><div class="sym">${esc(c.symbol)}</div><div class="nm">${esc(c.name)} · ${c.drawdown_pct!=null?pc(c.drawdown_pct)+" from 2y high":""}</div></div>
-      <div class="px"><b class="mono" id="px-${c.symbol}">${money(c.price)}</b><div class="small mono"><span class="pill ${c.live?"lv":""}" id="src-${c.symbol}">${c.live?"● live":"watcher"}</span> <br><span id="ch-${c.symbol}" class="${c.change_24h>=0?"up":"dn"}">${pc(c.change_24h)} 24h</span> · <span class="${c.change_7d>=0?"up":"dn"}">${pc(c.change_7d)} 7d</span></div></div></div>
-      <div style="cursor:pointer" id="sp-${c.symbol}" onclick="openChart('${c.symbol}')" title="Open chart">${spark(liveSpark(c),col)}</div>
-      <div class="mission m-${d.k}" title="${esc(d.text+(d.why?"\n"+d.why:""))}"><div class="k">${esc(d.title)}</div><div class="t">${esc(d.text)}</div>${d.why?`<div class="why">${esc(d.why)}</div>`:""}
-      <div class="btns">${actionButtons(c,d)}</div></div>
-      <div class="sect"><span>Your orders on Kraken</span><span class="mono">${money(coinAvail(c.symbol))} dip money left</span></div>
-      ${ordersTable(c)}
-      <div class="sect"><span>Buckets</span><span class="mono">avg cost ${me.avgCost?money(me.avgCost):"–"}</span></div>
-      <div class="buckets"><div class="bk"><small>Core / staked</small><b class="mono">${qty(me.core)}</b><small>never sold</small></div>
-        <div class="bk"><small>Trade</small><b class="mono">${qty(me.trade)}</b><small>take-profits apply</small></div>
-        <div class="bk"><small>Value</small><b class="mono">${money((me.core+me.trade)*c.price)}</b><small>${me.avgCost?pc((c.price/me.avgCost-1)*100)+" vs cost":"set cost in Setup"}</small></div></div>
-      <div class="sect"><span>Heads-up: top-warning flags</span><span class="mono">${nflags}/${NFLAGS}</span></div>
-      <div class="meter">${[...Array(NFLAGS)].map((_,i)=>`<i class="${i<nflags?"f":""}"></i>`).join("")}</div>
-      <div class="chips" style="margin-top:8px">${Object.keys(FLAG_INFO).map(k=>{const f=(c.flags||{})[k],on=flagOn(c,k),o=ovr(c.symbol,k),info=FLAG_INFO[k];
-        const det=(f?f.detail:"no data yet")+(o?` · set ${o.v?"ON":"OFF"} by you (tap to change)`:(info.ov?" · tap to override":""));
-        return `<div class="chip ${on?"on":""} ${info.ov?"man":""}" ${info.ov?`onclick="cycleOverride('${c.symbol}','${k}')"`:""} title="${esc(det)}"><span class="d"></span><span>${info.n}<small>${esc(det)}</small></span></div>`}).join("")}</div>
-      <div class="sect"><span>Heads-up: bottom signals</span><span class="mono">${c.bottom_count}/${NBOTTOMS}</span></div>
-      <div class="meter">${[...Array(NBOTTOMS)].map((_,i)=>`<i style="${i<c.bottom_count?"background:var(--ice)":""}"></i>`).join("")}</div>
-      <div class="chips" style="margin-top:8px">${Object.keys(c.bottoms).map(k=>`<div class="chip ${c.bottoms[k].on?"bon":""}"><span class="d"></span><span>${BOTTOM_INFO[k]||k}<small>${esc(c.bottoms[k].detail)}</small></span></div>`).join("")}</div>
-    </div>`;}
-  return h+`</div>`;}
 
-function ordersTable(c){const os=(c.orders||[]).slice().sort((a,b)=>b.price-a.price);
-  if(!os.length)return `<div class="small muted">No open orders yet.</div>`;
-  return `<table class="small" style="margin-top:2px">${os.map(o=>{const a=orderAmount(c,o),sell=o.kind==="take_profit";
-    return `<tr><td style="color:${sell?"var(--red)":"var(--green)"}">${sell?"SELL":"BUY"}</td><td>${esc(orderLabel(o))}</td><td class="mono">${money(o.price)}</td>
-      <td class="mono">${sell?qty(a.q)+" "+c.symbol:(a.usd!=null?money(a.usd):"½ of sale")}</td></tr>`}).join("")}</table>`;}
-function actionButtons(c,d){
-  if(d.act==="sell")return `<button class="b pri" onclick="logOrder('${c.symbol}')">I sold ✓</button><button class="b" onclick="skipOrder('${c.symbol}')">Didn't sell</button>`;
-  if(d.act==="buy")return `<button class="b pri" onclick="logOrder('${c.symbol}')">I bought ✓</button><button class="b" onclick="skipOrder('${c.symbol}')">Didn't buy</button>`;
-  return `<button class="b" onclick="logBuy('${c.symbol}')">Log a core buy</button><button class="b" onclick="openChart('${c.symbol}')">📈 Chart</button>`;}
 
-function renderReserve(){const syms=(DATA?DATA.coins.map(c=>c.symbol):Object.keys(S.coins));
-  let used=0;let rows=syms.map(s=>{const b=coinBudget(s),sp=S.spent[s]||0;used+=sp;
-    return `<tr><td><b>${s}</b></td><td class="mono">${S.reserve.alloc[s]||0}%</td><td class="mono">${money(b)}</td><td class="mono">${money(sp)}</td><td class="mono">${money(b-sp)}</td><td style="width:30%"><div class="xpbar" style="width:100%"><i style="width:${b?Math.min(100,sp/b*100):0}%;background:var(--blue)"></i></div></td></tr>`}).join("");
-  const waiting=syms.reduce((t,s)=>{const v=V(C(s));return t+Object.values(v.sales).reduce((a,x)=>a+(x.got-(x.used||0)),0);},0);
-  const all=(DATA?DATA.coins:[]).flatMap(c=>(c.orders||[]).map(o=>({c,o,a:orderAmount(c,o)}))).sort((x,y)=>x.c.symbol.localeCompare(y.c.symbol)||y.o.price-x.o.price);
-  return `<div class="three"><div class="card"><div class="muted small">Dip reserve</div><div style="font-size:26px" class="mono">${money(S.reserve.total)}</div></div>
-    <div class="card"><div class="muted small">Spent on dips</div><div style="font-size:26px" class="mono">${money(used)}</div></div>
-    <div class="card"><div class="muted small">Sale money waiting to buy back</div><div style="font-size:26px" class="mono">${money(waiting)}</div></div></div>
-    <div class="card" style="margin-top:14px"><b>Orders to have on Kraken</b><p class="small muted">Place these as limit orders (sells as take-profit / limit sell, buys as limit buy). Then they work while you sleep, and your phone pings when one is reached.</p>
-    <table><tr><th>Coin</th><th>Order</th><th>Price</th><th>Amount</th></tr>${all.map(({c,o,a})=>`<tr><td>${c.symbol}</td><td style="color:${o.kind==="take_profit"?"var(--red)":"var(--green)"}">${esc(orderLabel(o))}</td><td class="mono">${money(o.price)}</td>
-      <td class="mono">${o.kind==="take_profit"?qty(a.q)+" "+c.symbol:(a.usd!=null?money(a.usd)+" (≈ "+qty(a.q)+")":"½ of that sale's money")}</td></tr>`).join("")||`<tr><td class="muted">No orders yet.</td></tr>`}</table></div>
-    <div class="card" style="margin-top:14px"><table><tr><th>Coin</th><th>Dip share</th><th>Dip budget</th><th>Spent</th><th>Left</th><th></th></tr>${rows}</table>
-    <p class="small muted">Dip money buys on the dip ladder. Money from take-profit sales is kept separately for buying back below each sale. Set the dip reserve and each coin's share in Setup.</p></div>`;}
 
 function ago(ts){const m=Math.max(0,(Date.now()/1000-ts)/60);return m<60?Math.round(m)+"m":m<1440?Math.round(m/60)+"h":Math.round(m/1440)+"d";}
 const TAGC={catalyst:"var(--blue)",hype:"var(--amber)",risk:"var(--red)",macro:"var(--violet)",official:"var(--green)"};
@@ -340,7 +465,7 @@ function renderNews(){if(!DATA)return `<div class="card">Loading…</div>`;const
     <p class="small muted">Headlines are matched to coins by fixed keywords and tagged by fixed word lists. No AI. A tag can occasionally be wrong; flags always show what triggered them.</p>`;
   return h;}
 
-const XP_HELP=`<div class="card" style="margin-bottom:14px"><b>How XP works</b><p class="small muted">+10 daily check-in · +15 core buy · +60 jumping out on a take-profit · +50 jumping in on a buy-back or dip rung · +100 finishing a 24h cooldown instead of panic-selling · +5 honestly logging that you didn't act · −30 off-plan trade (and your streak resets). XP rewards following your plan, not profit.</p></div>`;
+const XP_HELP=`<div class="card" style="margin-bottom:14px"><b>How XP works</b><p class="small muted">+10 daily check-in · +15 buy-day buy · +60 taking profit on a Trade lot · +50 buying back · +10 re-baselining at the new month · +100 finishing a 24h cooldown instead of panic-selling · +5 honestly logging a skip · −30 off-plan trade (and your streak resets). XP rewards following your plan, not profit.</p></div>`;
 let BT=null,BT_ERR=null;
 let ST=null,ST_ERR=null;
 async function loadStress(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,"");const r=await fetch(base+"stress.json?t="+Date.now(),{cache:"no-store"});
@@ -429,23 +554,7 @@ function renderBacktest(){if(!BT&&!BT_ERR){loadBacktest();return `<div class="ca
 function renderJournal(){if(!S.log.length)return XP_HELP+`<div class="card muted">Nothing logged yet. Your first check-in starts the journal.</div>`;
   return XP_HELP+`<div class="card"><table><tr><th>When</th><th>Coin</th><th>What happened</th><th>XP</th></tr>${S.log.map(l=>`<tr><td class="small muted">${new Date(l.ts).toLocaleString()}</td><td>${esc(l.coin)}</td><td>${esc(l.text)}</td><td class="mono ${l.xp>=0?"up":"dn"}">${l.xp>=0?"+":""}${l.xp}</td></tr>`).join("")}</table></div>`;}
 
-function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S.coins);
-  return `<div class="card"><b>Holdings</b><p class="small muted">Stays on this device only, never sent anywhere. Core = staked / long-term (never sold on flags). Trade = the part flag rules apply to.</p>
-    <table><tr><th>Coin</th><th>Core / staked</th><th>Trade</th><th>Avg cost $</th><th>Reserve share %</th></tr>
-    ${syms.map(s=>{const m=C(s);return `<tr><td><b>${s}</b></td><td><input type="number" step="any" data-f="core" data-s="${s}" value="${m.core||""}"></td><td><input type="number" step="any" data-f="trade" data-s="${s}" value="${m.trade||""}"></td><td><input type="number" step="any" data-f="avgCost" data-s="${s}" value="${m.avgCost||""}"></td><td><input type="number" step="any" data-f="alloc" data-s="${s}" value="${S.reserve.alloc[s]||""}"></td></tr>`}).join("")}</table>
-    <div class="two"><div><label>Dip reserve pool ($)</label><input type="number" step="any" id="resTotal" value="${S.reserve.total||""}"></div>
-    <div><label>Your GitHub repo URL (for "Add coin")</label><input id="repoUrl" placeholder="https://github.com/you/crypto-coach" value="${esc(S.settings.repoUrl||"")}"></div></div>
-    <label>Signals URL</label><input id="dataUrl" value="${esc(S.settings.dataUrl)}">
-    <div class="btns"><button class="b pri" onclick="saveSetup()">Save</button></div></div>
-    <div class="card" style="margin-top:14px"><b>Take-profit base</b><p class="small muted">The watcher measures your take-profits (+20% / +40%) from a base price per coin: your average cost from <span class="mono">coins.json</span>, or the price on its first run. After a buy-back, it restarts from your buy-back price. If your real average cost is different, put it in <span class="mono">coins.json</span> as <span class="mono">"cost"</span>.</p>
-    <table><tr><th>Coin</th><th>Watcher's base now</th><th>Your average cost</th><th></th></tr>${(DATA?DATA.coins:[]).map(c=>{const ref=(c.engine||{}).ref,m=C(c.symbol);const off=ref&&m.avgCost&&Math.abs(m.avgCost/ref-1)>0.03;
-      return `<tr><td>${c.symbol}</td><td class="mono">${money(ref)}</td><td class="mono">${m.avgCost?money(m.avgCost):"–"}</td><td class="small ${off?"dn":"muted"}">${off?`differs: set <span class="mono">"cost": ${(+m.avgCost).toPrecision(6)}</span> for ${c.symbol} in coins.json`:""}</td></tr>`}).join("")}</table></div>
-    <div class="card" style="margin-top:14px"><b>Backup</b><p class="small muted">Your progress lives in this browser. Copy a backup now and then; paste it to restore on another device.</p>
-    <div class="btns"><button class="b" onclick="copyBackup()">Copy backup</button><button class="b" onclick="restore()">Restore from backup</button><button class="b warn" onclick="wipe()">Reset everything</button></div></div>`;}
 
-function render(){renderHeader();const v=document.getElementById("view");
-  v.innerHTML=TAB==="missions"?renderMissions():TAB==="reserve"?renderReserve():TAB==="journal"?renderJournal():TAB==="news"?renderNews():TAB==="backtest"?renderBacktest():renderSetup();
-  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB));}
 
 /* ---------- actions ---------- */
 function coinData(sym){return DATA.coins.find(c=>c.symbol===sym);}
@@ -460,40 +569,6 @@ function cycleOverride(sym,k){const me=C(sym);me.ovr=me.ovr||{};const o=ovr(sym,
   save();render();}
 function skip(sym,what){addXP(5,`Logged a skip on ${what}. Honest logging still counts.`,sym,"skip");render();}
 
-function logBuy(sym){const c=eff(coinData(sym));
-  modal(`<h3>Core buy · ${sym}</h3><div class="two"><div><label>Spent ($)</label><input id="mAmt" type="number" step="any"></div>
-  <div><label>Price paid</label><input id="mPx" type="number" step="any" value="${c.price.toPrecision(6)}"></div></div>
-  <label>Goes into</label><select id="mDest"><option value="core" selected>Core / staking</option><option value="trade">Trade bucket</option></select>
-  <div class="btns"><button class="b pri" onclick="confirmBuy('${sym}')">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
-function addCoins(me,q,usd,px,dest){const held=me.core+me.trade;
-  if(me.avgCost>0)me.avgCost=(me.avgCost*held+usd)/(held+q);else if(held===0)me.avgCost=px;  // unknown cost + existing coins: leave unknown
-  me[dest]+=q;}
-function confirmBuy(sym){const amt=+document.getElementById("mAmt").value,px=+document.getElementById("mPx").value,dest=document.getElementById("mDest").value;
-  if(!(amt>0&&px>0))return toast("Enter amount and price");
-  addCoins(C(sym),amt/px,amt,px,dest);addXP(15,`Core buy: ${qty(amt/px)} ${sym} at ${money(px)}.`,sym,"buy");closeModal();render();}
-function logOrder(sym){const c=eff(coinData(sym)),d=directive(c);if(!d.o)return;const sell=d.act==="sell",a=d.a;
-  modal(`<h3>${esc(d.title)} · ${sym}</h3><p class="small muted">${esc(d.text)}</p><div class="two">
-    ${sell?`<div><label>Coins sold</label><input id="mQ" type="number" step="any" value="${a.q?(+a.q).toPrecision(6):""}"></div>`
-          :`<div><label>Spent ($)</label><input id="mAmt" type="number" step="any" value="${a.usd?a.usd.toFixed(2):""}"></div>`}
-    <div><label>Price</label><input id="mPx" type="number" step="any" value="${(+d.o.price).toPrecision(6)}"></div></div>
-    ${sell?"":`<label>Goes into</label><select id="mDest"><option value="trade">Trade bucket</option><option value="core">Core / staking</option></select>`}
-    <div class="btns"><button class="b pri" onclick="confirmOrder('${sym}')">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
-function confirmOrder(sym){const c=eff(coinData(sym)),d=directive(c);if(!d.o)return closeModal();const me=C(sym),v=V(me),o=d.o;
-  const px=+document.getElementById("mPx").value;if(!(px>0))return toast("Enter the price");
-  if(d.act==="sell"){const q=+document.getElementById("mQ").value;if(!(q>0))return toast("Enter coins sold");
-    baselineTrade(me,(c.engine||{}).cycle);me.trade=Math.max(0,me.trade-q);
-    v.sales["take_profit:"+(+o.price).toFixed(6)]={q,px,got:q*px,used:0,ts:Date.now()};
-    v.handled[okey(o)]={ts:Date.now(),done:true};
-    addXP(60,`Jumped out: sold ${qty(q)} ${sym} at ${money(px)} (+${o.pct}% take-profit). ${money(q*px)} set aside to buy back lower.`,sym,"sell");}
-  else{const usd=+document.getElementById("mAmt").value,dest=document.getElementById("mDest").value;if(!(usd>0))return toast("Enter the amount");
-    addCoins(me,usd/px,usd,px,dest);
-    if(o.kind==="dip_buy")S.spent[sym]=(S.spent[sym]||0)+usd;
-    else{const sale=saleFor(me,o);if(sale)sale.used=(sale.used||0)+usd;}
-    v.handled[okey(o)]={ts:Date.now(),done:true};
-    addXP(50,`Jumped in: bought ${qty(usd/px)} ${sym} at ${money(px)} (${o.kind==="dip_buy"?"dip rung "+o.rung:"buy-back"}).`,sym,"buy");}
-  closeModal();render();}
-function skipOrder(sym){const c=eff(coinData(sym)),d=directive(c);if(!d.o)return;V(C(sym)).handled[okey(d.o)]={ts:Date.now(),done:false};
-  addXP(5,`Logged honestly: didn't act on ${orderLabel(d.o).toLowerCase()} at ${money(d.o.price)}.`,sym,"skip");render();}
 
 document.getElementById("panicBtn").onclick=()=>{
   const lines=(DATA?DATA.coins:[]).map(c=>{c=eff(c);const d=directive(c),me=C(c.symbol);return `<li><b>${c.symbol}</b>: ${esc(d.title)}. Core ${qty(me.core)} is off-limits.</li>`}).join("");
@@ -513,10 +588,6 @@ function snip(){const s=(document.getElementById("nSym").value||"QNT").toUpperCa
   document.getElementById("nSnip").textContent=`{ "symbol": "${s}", "name": "${n}", "kraken": "${p}", "futures": "PF_${p}", "anchor": null }`;}
 function copySnip(){navigator.clipboard.writeText(document.getElementById("nSnip").textContent).then(()=>toast("Copied"),()=>toast("Select and copy the line manually"));}
 
-function saveSetup(){document.querySelectorAll("[data-f]").forEach(i=>{const v=parseFloat(i.value)||0,s=i.dataset.s;if(i.dataset.f==="alloc")S.reserve.alloc[s]=v;else C(s)[i.dataset.f]=v;});
-  S.reserve.total=parseFloat(document.getElementById("resTotal").value)||0;S.settings.repoUrl=document.getElementById("repoUrl").value.trim();
-  const du=document.getElementById("dataUrl").value.trim()||"signals.json";const changed=du!==S.settings.dataUrl;S.settings.dataUrl=du;save();
-  const tot=Object.values(S.reserve.alloc).reduce((a,b)=>a+b,0);toast(tot&&Math.round(tot)!==100?`Saved. Reserve shares add to ${tot}%, not 100%`:"Saved");if(changed)fetchData();else render();}
 function copyBackup(){navigator.clipboard.writeText(JSON.stringify(S)).then(()=>toast("Backup copied. Paste it somewhere safe"),()=>{modal(`<h3>Backup</h3><textarea rows="8">${esc(JSON.stringify(S))}</textarea><div class="btns"><button class="b" onclick="closeModal()">Close</button></div>`);});}
 function restore(){modal(`<h3>Restore</h3><textarea id="rb" rows="8" placeholder="Paste backup here"></textarea><div class="btns"><button class="b pri" onclick="doRestore()">Restore</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
 function doRestore(){try{const s=JSON.parse(document.getElementById("rb").value);if(!s.coins)throw 0;S=Object.assign(blank(),s);save();closeModal();toast("Restored");render();}catch(e){toast("That doesn't look like a backup");}}
@@ -592,7 +663,7 @@ function openChart(sym){const c=eff(coinData(sym));CH.sym=sym;
   modal(`<div class="row" style="justify-content:space-between"><div><h3 style="margin:0">${sym} <span class="mono" id="chartPx">${money(c.price)}</span></h3>
     <div class="small muted" id="chartNote"></div></div><div class="row"><div class="ivs">${Object.keys(IV).map(k=>`<button class="b ${k===CH.iv?"on":""}" data-iv="${k}" onclick="setIv('${k}')">${k.toUpperCase()}</button>`).join("")}</div><button class="b" onclick="closeModal()">✕</button></div></div>
     <div id="chart"></div>
-    <div class="legend"><span style="--c:#5aa9ff">20 avg</span><span style="--c:#ffb547">50 avg</span><span style="--c:#a98bff">200 avg</span><span style="--c:#ff5c7a">your sell orders</span><span style="--c:#3ddc97">your buy-backs</span><span style="--c:rgba(90,169,255,.7)">dip ladder</span><span style="--c:#e7ecf5">your average cost</span></div>
+    <div class="legend"><span style="--c:#5aa9ff">20 avg</span><span style="--c:#ffb547">50 avg</span><span style="--c:#a98bff">200 avg</span><span style="--c:#ff5c7a">your sell orders</span><span style="--c:#3ddc97">your buy-backs</span><span style="--c:#e7ecf5">your lot costs</span></div>
     <p class="small muted">Decide on the <b>1D</b> chart, check the big picture on <b>1W</b>. 1H and 4H are mostly noise. Use them to watch, not to act.</p>`);
   drawChart();}
 function setIv(k){CH.iv=k;document.querySelectorAll(".ivs button").forEach(b=>b.classList.toggle("on",b.dataset.iv===k));drawChart();}
@@ -609,9 +680,9 @@ async function drawChart(){const sym=CH.sym,c=coinData(sym),el=document.getEleme
   const s=ch.addCandlestickSeries({upColor:"#3ddc97",downColor:"#ff5c7a",borderVisible:false,wickUpColor:"#3ddc97",wickDownColor:"#ff5c7a"});
   s.setData(bars);
   [[20,"#5aa9ff"],[50,"#ffb547"],[200,"#a98bff"]].forEach(([n,col])=>{if(bars.length>n){const l=ch.addLineSeries({color:col,lineWidth:1.5,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});l.setData(smaLine(bars,n));}});
-  (c.orders||[]).forEach(o=>s.createPriceLine({price:o.price,color:o.kind==="take_profit"?"#ff5c7a":o.kind==="buy_back"?"#3ddc97":"rgba(90,169,255,.7)",lineWidth:1,lineStyle:2,axisLabelVisible:true,
-    title:o.kind==="take_profit"?"sell +"+o.pct+"%":o.kind==="buy_back"?"buy back":"dip "+o.rung}));
-  const me=C(sym);if(me.avgCost)s.createPriceLine({price:me.avgCost,color:"#e7ecf5",lineWidth:1,lineStyle:0,axisLabelVisible:true,title:"your cost"});
+  openOrders(sym,c).forEach(o=>s.createPriceLine({price:o.price,color:o.kind==="buyback"?"#3ddc97":"#ff5c7a",lineWidth:1,lineStyle:2,axisLabelVisible:true,
+    title:o.kind==="buyback"?"buy back −"+o.sale.levels[o.i].pct+"%":o.kind==="runner"?"runner +100%":"sell +"+TP[o.k]+"%"}));
+  M(sym).lots.forEach(l=>s.createPriceLine({price:lotPer(l),color:"#e7ecf5",lineWidth:1,lineStyle:0,axisLabelVisible:true,title:lotName(l)+" lot cost"}));
   const show={"1h":120,"4h":150,"1d":180,"1w":200}[CH.iv];ch.timeScale().setVisibleLogicalRange({from:bars.length-show,to:bars.length+3});
   CH.chart=ch;CH.series=s;
   CH.ro=new ResizeObserver(()=>{if(CH.chart)CH.chart.applyOptions({width:el.clientWidth});});CH.ro.observe(el);

@@ -1,4 +1,14 @@
-# Crypto Coach strategy (v5 draft, under test)
+# Crypto Coach strategy
+
+> **Adopted plan (app v5.0.0, 2026-11-22), chosen by B after the stress test in section 8:**
+> - Scheduled buys, 2–3 a month (default the 1st and 15th). Start: $500.
+> - **70% Core**, never sold. **30% to that month's Trade lot.**
+> - Each lot sells half at **+20%** and the rest at **+40%**; each sale buys back at **−20% / −40%** with half the money each. Extra coins go to Core. **Monthly re-baseline (v5.1):** unfilled buy-backs are cancelled at month end and their cash joins the next 3 buy days, all to Trade.
+> - **Bull mode on:** above a rising 200-day average, the +40% sell keeps half as a runner (sold at +100%, or when the price closes below the 50-day average).
+> - Flags and signals are context only. One daily summary ping. Kraken notifies order fills.
+> - Expectation: about the same coins as plain DCA over a full cycle; ahead in crashes, behind in bull runs. The point is behavioural: cash and a plan in crashes, never selling Core.
+>
+> Sections 1–5 below are the earlier v5 draft (dip-ladder buy-ins, per-buy lots), kept for the record.
 
 **Owner:** B (Kelowna, BC, Canada). Retail investor with a full-time job, not a day trader.
 **Goal:** accumulate more coins over time (ETH, SOL, XRP; QNT and BTC tracked). Success is measured in **coins**, not dollars.
@@ -102,6 +112,28 @@ Three independent AI reviews took different roles (quant, risk manager, crypto s
 - B's real constraints: $500 start, $100/month, at most 3 buy-ins a month, $5 minimum order.
 - Fees: 0.40% taker, 0.25% maker. Fills at the gap price. Tax estimate on CRA average cost.
 - History back to 2016-17. Rolling 2-year windows, split by bull / bear / sideways. Bootstrap paths. Sensitivity of the baseline window (30 / 60 / 90 days) and of the spacing.
+
+## 8. Stress-test results (v4.3.0, 2026-11-21): the verdict
+
+120 rolling 2-year windows from 2016-2026 (51 bull, 12 bear, 57 sideways), $500 start + $100/month, real fees, Canadian tax estimate.
+
+| Rules | Beat DCA | Beat cash-matched DCA | Median vs DCA | Bad case (10%) | Bull windows | Bear windows | After tax | Trades/month |
+|---|---|---|---|---|---|---|---|---|
+| One average · 70% core · bull mode | 45% | 60.8% | −2.3% | −23.9% | −17.0% | +14.1% | −3.8% | 3.2 |
+| One average · 40% core · bull mode | 50.8% | 60% | +0.5% | −37.1% | −27.7% | +21.6% | −1.6% | 3.2 |
+| One lot per month · 70% core · bull mode | 45% | 59.2% | −2.3% | −24.4% | −16.2% | +11.4% | −3.7% | 5.9 |
+| Each buy its own lot · 40% core · bull mode | 50% | 57.5% | −0.5% | −36.3% | −28.3% | +17.6% | −2.7% | 16.3 |
+
+- **Over full cycles, no rule set makes more coins than plain DCA.** The median is about −2% to +0.5%, and slightly negative after tax.
+- **It's a trade-off, not an edge:** better in bear windows (+11% to +22%), worse in bull windows (−16% to −29%).
+- **The dip-ladder buy timing beat random timing only 32-41% of the time.** Its timing is not an edge.
+- **Bootstrap:** 44-45% of synthetic paths beat DCA; the typical path is −4% to −5%.
+- **Sensitivity is flat** (30/60/90-day baseline, +15/30 to +30/60 spacing all land around −2% to −3%). That means it isn't overfit, and also that no setting finds an edge.
+- **By coin:** QNT beat DCA in 92% of windows, XRP in 57%, ETH in 47%, SOL in 33%, BTC in 21%.
+- **Lots:** per-buy lots trade 4-5× more for the same or worse results. Monthly lots ≈ one average.
+- The earlier +12-14% (22-month Kraken test) came from that one falling window, as the quant reviewer predicted.
+
+**Conclusion:** steady DCA plus never panic-selling is the robust core. The trading layer is behavioural insurance: it smooths the ride and keeps cash for crashes, at the cost of lagging in bull runs. It is not a way to beat DCA. If used, keep it small: 70% core, one average or monthly lots, bull mode on.
 
 **Practical guardrails to adopt regardless of the results:**
 - Decide a maximum total amount and a drop you can stomach, and write both down.

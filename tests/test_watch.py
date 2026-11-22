@@ -316,14 +316,11 @@ def test_alerts_fire_once():
     s = {"symbol": "TST", "price": 100.0, "auto_flag_count": 3, "bottom_count": 3,
          "flags": {"vertical": {"on": True}, "stretched": {"on": True}, "rsi": {"on": True}},
          "bottoms": {"freefall": {"on": True}, "oversold": {"on": True}, "capitulation": {"on": True}},
-         "new_events": [{"kind": "take_profit", "price": 120.0, "pct": 20, "share": 50},
-                        {"kind": "buy_back", "price": 96.0, "share": 50.0},
-                        {"kind": "dip_buy", "price": 90.0, "rung": 1, "share": 25}],
+         "new_events": [{"kind": "take_profit", "price": 120.0, "pct": 20, "share": 50}],
          "alerted": {}}
     msgs = watch.build_alerts(s, first_run=False)
-    assert [p for _, p in msgs] == [4, 4, 4, 3, 3], msgs        # 3 jump in/out, 2 heads-ups
-    assert msgs[0][0].startswith("🔴 JUMP OUT") and msgs[1][0].startswith("🟢 JUMP IN")
-    s["new_events"] = []
+    assert [p for _, p in msgs] == [3, 3], msgs                 # v5: heads-ups only, no old JUMP order alerts
+    assert "overheated" in msgs[0][0] and "washed out" in msgs[1][0]
     assert watch.build_alerts(s, first_run=False) == []          # same state -> silence
     s["auto_flag_count"] = 4
     assert len(watch.build_alerts(s, first_run=False)) == 1      # heads-up level 1 -> 2
@@ -331,8 +328,27 @@ def test_alerts_fire_once():
     assert watch.build_alerts(s, first_run=False) == []
     s["bottom_count"] = 3
     assert len(watch.build_alerts(s, first_run=False)) == 1
-    assert watch.build_alerts(dict(s, alerted={}, new_events=[{"kind": "dip_buy", "price": 1, "rung": 1, "share": 25}]),
-                              first_run=True) == []               # first run: no spam
+    assert watch.build_alerts(dict(s, alerted={}), first_run=True) == []   # first run: no spam
+
+
+def test_daily_summary_once_a_day_at_the_set_hour():
+    from zoneinfo import ZoneInfo
+    plan = {"days": [1, 15], "summary_hour": 18, "timezone": "America/Vancouver"}
+    tz = ZoneInfo("America/Vancouver")
+    at = lambda y, m, d, h: datetime(y, m, d, h, 5, tzinfo=tz).timestamp()
+    coins = [{"symbol": "SOL", "price": 133.0, "change_24h": -4.7, "ma200": 150.0, "ma200_prev": 160.0,
+              "auto_flag_count": 0, "bottom_count": 1}]
+    msg, dg = watch.daily_summary(coins, plan, {}, [], now=at(2026, 11, 22, 17))
+    assert msg is None and dg == {}                               # before 6 pm: nothing
+    msg, dg = watch.daily_summary(coins, plan, {}, [], now=at(2026, 11, 22, 18))
+    assert msg[1] == 3 and "Nothing to do" in msg[0] and "🐻 bear" in msg[0] and dg == {"last_date": "2026-11-22"}
+    msg2, _ = watch.daily_summary(coins, plan, dg, [], now=at(2026, 11, 22, 21))
+    assert msg2 is None                                           # once a day
+    msg, dg = watch.daily_summary(coins, plan, dg, [("🟡 HEADS UP · SOL looks washed out", 3)], now=at(2026, 12, 1, 18))
+    assert msg[1] == 4 and "BUY DAY: SOL" in msg[0] and "HEADS UP" in msg[0]
+    assert watch.trend_word({"price": 200, "ma200": 150, "ma200_prev": 140}) == "🐂 bull"
+    assert watch.trend_word({"price": 140, "ma200": 150, "ma200_prev": 140}) == "↔ sideways"
+
 
 def test_validate_rejects_bad_data():
     good = [{"t": NOW - (40 - i) * DAY, "o": 10, "h": 11, "l": 9, "c": 10.5, "v": 1} for i in range(40)]

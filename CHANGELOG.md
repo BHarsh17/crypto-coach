@@ -4,6 +4,25 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 5.1.0 · 2026-11-22
+**Monthly re-baseline.** Every dollar now works off the current month's prices.
+- Buy-back orders last until the end of the month. On the new month, any unfilled ones show a **🧹 New month · re-baseline** mission: cancel them on Kraken and tap Done.
+- Their cash joins your **next 3 buy days**, split evenly and all of it to Trade (it was Trade money). It becomes part of the new month's lot, with fresh +20/+40% sells at the new price.
+- Rolled-over cash shows in "Waiting" and on the Orders tab. +10 XP for re-baselining.
+- Checked in a real browser: rollover → buy day amount → Core/Trade split, against a hand calculation.
+
+## 5.0.0 · 2026-11-22
+**The app is rebuilt around the plan the 10-year stress test supports.** See `STRATEGY.md`.
+- **Buy on a schedule:** buy days (default the 1st and 15th) and a dollar amount per coin, set in Setup. Each buy goes **70% to Core** (never sold) and **30% to that month's Trade lot**.
+- **Monthly Trade lots:** each lot sells half at **+20%** and the rest at **+40%** of its own cost. Each sale sets **buy-backs −20% and −40%** below it, half the sale money each. Coins bought back beyond what was sold move to Core 🎉.
+- **Bull mode:** in a bull trend (price above a rising 200-day average), the +40% sell keeps half as a runner. The runner sells at +100%, or when the price closes below its 50-day average.
+- **New tabs:** 🎯 Today (one mission per coin: Buy day / Sell / Buy back / Hold, plus Core, Trade and Waiting), 📋 Orders & lots (exactly what to have on Kraken), 🌡 Market (trend, flags, bottom signals, news).
+- **One daily ping** at 6 pm Vancouver time: buy-day reminder plus each coin's weather. Heads-ups are held for it. Change it with `"plan": {"days": [1, 15], "summary_hour": 18, "timezone": "America/Vancouver"}` in coins.json.
+- **Gone:** the old dip-ladder JUMP IN / JUMP OUT pings. Your limit orders sit on Kraken, and Kraken notifies you when one fills. Your amounts never leave your browser.
+- **Your earlier holdings were moved to Core** (nothing is sold). Use "＋ lot" in Setup for coins you want the sell ladder to manage.
+- Watcher: adds the 200-day average from 20 days ago, so the app can tell whether the trend is rising.
+- 1 new test (71 total). The app's flows (buy day, sell, buy-back) were checked by hand in a real browser.
+
 ## 4.3.0 · 2026-11-22
 **Stress test on up to 10 years of prices.** Still a test only; live alerts don't change. Built from three independent reviews of the v5 strategy (see `STRATEGY.md`).
 - **Long history:** Coinbase daily prices (BTC, ETH, SOL, QNT) and Bitstamp (XRP, because Coinbase delisted it 2020-2023), back to 2016-17 where available. Checked for bad candles; short gaps filled, long gaps cut.
