@@ -296,35 +296,6 @@ def test_bottom_capitulation():
     assert not run_coin(series(2, 3.0, 4.9))["bottoms"]["capitulation"]["on"]  # drop too small
 
 
-def test_ladder_prices_and_hits():
-    s = run_coin(candle_series(flat_then([89.99]), 1440), anchor=100.0)
-    prices = [r["price"] for r in s["ladder"]["rungs"]]
-    for got, want in zip(prices, [90.0, 80.0, 70.0, 60.0]):
-        close(got, want, 1e-9)
-    assert [r["hit"] for r in s["ladder"]["rungs"]] == [True, False, False, False]
-    s = run_coin(candle_series(flat_then([90.01]), 1440), anchor=100.0)
-    assert not any(r["hit"] for r in s["ladder"]["rungs"])
-
-
-def test_ladder_memory_and_reset():
-    first = run_coin(candle_series(flat_then([95.0]), 1440), anchor=None)
-    assert first["ladder"]["anchor"] == 95.0
-    # a later run: a daily low of 76 after the anchor was set -> rungs 1 and 2 reached (85.5, 76.0)
-    prev = dict(first, ladder=dict(first["ladder"], anchor_ts=NOW - 3 * DAY))
-    lows = [99.0] * 119 + [76.0]
-    s = run_coin(candle_series(flat_then([90.0]), 1440, lows=lows), prev=prev)
-    assert s["ladder"]["anchor"] == 95.0 and s["ladder"]["low_since"] == 76.0
-    assert [r["hit"] for r in s["ladder"]["rungs"]] == [True, True, False, False]
-    # lows from before the anchor was set never count
-    prev2 = dict(first, ladder=dict(first["ladder"], anchor_ts=NOW + DAY))
-    s = run_coin(candle_series(flat_then([94.0]), 1440, lows=lows), prev=prev2)
-    assert s["ladder"]["low_since"] == 94.0
-    # changing the anchor in coins.json resets the memory
-    s = run_coin(candle_series(flat_then([94.0]), 1440, lows=lows), prev=prev, anchor=200.0)
-    assert s["ladder"]["anchor"] == 200.0 and s["ladder"]["low_since"] == 94.0
-    assert [r["hit"] for r in s["ladder"]["rungs"]] == [True, True, True, True]    # 180/160/140/120 all above 94
-
-
 def test_trailing_stop_and_drawdown():
     highs = [100.0] * 120
     highs[-30] = 200.0   # inside 90 days
@@ -336,26 +307,26 @@ def test_trailing_stop_and_drawdown():
 
 
 def test_alerts_fire_once():
-    s = {"symbol": "TST", "price": 100.0, "auto_flag_count": 3, "bottom_count": 3, "trailing_stop": 120.0,
-         "bottoms": {"freefall": {"on": True}, "oversold": {"on": True}, "capitulation": {"on": True}},
+    s = {"symbol": "TST", "price": 100.0, "auto_flag_count": 3, "bottom_count": 3,
          "flags": {"vertical": {"on": True}, "stretched": {"on": True}, "rsi": {"on": True}},
-         "ladder": {"rungs": [{"n": 1, "price": 90, "drop": 10, "share": 25, "hit": True},
-                              {"n": 2, "price": 80, "drop": 20, "share": 25, "hit": False}]},
+         "bottoms": {"freefall": {"on": True}, "oversold": {"on": True}, "capitulation": {"on": True}},
+         "new_events": [{"kind": "take_profit", "price": 120.0, "pct": 20, "share": 50},
+                        {"kind": "buy_back", "price": 96.0, "share": 50.0},
+                        {"kind": "dip_buy", "price": 90.0, "rung": 1, "share": 25}],
          "alerted": {}}
     msgs = watch.build_alerts(s, first_run=False)
-    assert len(msgs) == 3, msgs     # tier, rung 1, bottoms
-    assert watch.build_alerts(s, first_run=False) == []     # same state -> silence
+    assert [p for _, p in msgs] == [4, 4, 4, 3, 3], msgs        # 3 jump in/out, 2 heads-ups
+    assert msgs[0][0].startswith("🔴 JUMP OUT") and msgs[1][0].startswith("🟢 JUMP IN")
+    s["new_events"] = []
+    assert watch.build_alerts(s, first_run=False) == []          # same state -> silence
     s["auto_flag_count"] = 4
-    assert len(watch.build_alerts(s, first_run=False)) == 1  # tier 1 -> 2
-    s["auto_flag_count"] = 5
-    assert watch.build_alerts(s, first_run=False) == []      # still tier 2
+    assert len(watch.build_alerts(s, first_run=False)) == 1      # heads-up level 1 -> 2
     s["bottom_count"] = 2
-    assert watch.build_alerts(s, first_run=False) == []      # bottoms fell: no alert
+    assert watch.build_alerts(s, first_run=False) == []
     s["bottom_count"] = 3
-    assert len(watch.build_alerts(s, first_run=False)) == 1  # back into the buy zone: alert again
-    s2 = dict(s, alerted={})
-    assert watch.build_alerts(s2, first_run=True) == []       # first run: no spam
-
+    assert len(watch.build_alerts(s, first_run=False)) == 1
+    assert watch.build_alerts(dict(s, alerted={}, new_events=[{"kind": "dip_buy", "price": 1, "rung": 1, "share": 25}]),
+                              first_run=True) == []               # first run: no spam
 
 def test_validate_rejects_bad_data():
     good = [{"t": NOW - (40 - i) * DAY, "o": 10, "h": 11, "l": 9, "c": 10.5, "v": 1} for i in range(40)]
@@ -505,6 +476,104 @@ def test_news_flags_boundaries():
     assert "unavailable" in f(tok=False)["fomo"]["detail"]
 
 
+# =================================================================== v4 orders engine
+sys.path.insert(0, os.path.join(HERE, "..", "watcher"))
+import engine  # noqa: E402
+R = engine.DEFAULT_RULES
+
+
+def test_engine_starting_orders():
+    st = engine.new_state(100.0, 100.0, R)
+    o = engine.open_orders(st, R)
+    assert [(x["kind"], round(x["price"], 6)) for x in o] == [
+        ("take_profit", 120.0), ("take_profit", 140.0),
+        ("dip_buy", 90.0), ("dip_buy", 75.0), ("dip_buy", 60.0), ("dip_buy", 45.0)]
+
+
+def test_engine_take_profit_then_buy_backs_then_new_cycle():
+    st = engine.new_state(100.0, 100.0, R)
+    ev = engine.step(st, 119.99, 100.0, 1, R)
+    assert ev == []                                                   # just under +20%: nothing
+    ev = engine.step(st, 121.0, 110.0, 2, R)
+    assert [(e["kind"], e["price"]) for e in ev] == [("take_profit", 120.0)]
+    bb = [round(x["price"], 6) for x in engine.open_orders(st, R) if x["kind"] == "buy_back"]
+    assert bb == [96.0, 72.0]                                         # 20% and 40% below the $120 sale
+    ev = engine.step(st, 141.0, 95.0, 3, R)                           # buy-back fills; the old +40% is gone
+    assert [(e["kind"], round(e["price"], 6)) for e in ev] == [("buy_back", 96.0)]
+    # the buy-back started a new cycle measured from $96: take-profits now 115.20 and 134.40,
+    # placed just now, so even a high of 141 in the same period doesn't fill them
+    assert st["cycle"] == 2 and abs(st["ref"] - 96.0) < 1e-9
+    ev = engine.step(st, 141.0, 120.0, 4, R)
+    assert [(e["kind"], round(e["price"], 6)) for e in ev] == [("take_profit", 115.2), ("take_profit", 134.4)]
+
+
+def test_engine_new_orders_wait_a_step():
+    st = engine.new_state(100.0, 100.0, R)
+    ev = engine.step(st, 125.0, 90.0, 1, R)        # TP fills and dip rung 1 fills; buy-backs (96, 72) just created
+    assert sorted(e["kind"] for e in ev) == ["dip_buy", "take_profit"]
+    assert not any(e["kind"] == "buy_back" for e in ev)              # 90 < 96, but the order didn't exist yet
+    ev = engine.step(st, 100.0, 95.0, 2, R)
+    assert [(e["kind"], e["price"]) for e in ev] == [("buy_back", 96.0)]
+
+
+def test_engine_reference_is_average_buy_back_price():
+    st = engine.new_state(100.0, 100.0, R)
+    engine.step(st, 120.0, 110.0, 1, R)            # sell at 120 -> buy-backs 96 / 72
+    engine.step(st, 100.0, 70.0, 2, R)             # both fill
+    # equal-dollar buys at 96 and 72 -> average cost 2/(1/96 + 1/72) = 82.2857...
+    assert abs(st["ref"] - 2 / (1 / 96 + 1 / 72)) < 1e-9
+    assert not st["buyback_sets"]
+    tps = [round(x["price"], 6) for x in engine.open_orders(st, R) if x["kind"] == "take_profit"]
+    assert tps == [round(st["ref"] * 1.2, 6), round(st["ref"] * 1.4, 6)]
+
+
+def test_engine_dip_ladder_independent_of_reference():
+    st = engine.new_state(100.0, 100.0, R)
+    ev = engine.step(st, 100.0, 59.0, 1, R)
+    assert [e["rung"] for e in ev] == [1, 2, 3] and st["ref"] == 100.0   # dip buys don't move take-profits
+    ev = engine.step(st, 100.0, 59.0, 2, R)
+    assert ev == []                                                       # each rung fires once
+
+
+def test_engine_config_changes_restart_parts():
+    st = engine.new_state(100.0, 100.0, R)
+    engine.step(st, 125.0, 88.0, 1, R)
+    engine.sync_config(st, 100.0, 100.0, R)        # unchanged -> nothing resets
+    assert st["tp_done"][0] and st["dip_done"][0]
+    engine.sync_config(st, 80.0, 50.0, R)          # you edited cost and anchor
+    assert st["ref"] == 80.0 and st["tp_done"] == [False, False]
+    assert st["anchor"] == 50.0 and st["dip_done"] == [False] * 4
+
+
+def test_engine_in_watcher_persists_and_never_repeats():
+    d = candle_series(flat_then([100.0]), 1440)
+    s1 = run_coin(d)
+    assert s1["new_events"] == [] and s1["engine"]["ref"] == 100.0          # first run: orders only
+    prev = json.loads(json.dumps(s1))
+    prev["engine"]["last_ts"] = NOW - 3 * 3600
+    h1 = candle_series([100.0] * 39 + [100.0], 60, highs=[100.0] * 39 + [121.0])
+    orig = (watch.candles, watch.futures_info)
+    series = {1440: d, 10080: candle_series([100.0] * 60, 10080), 240: candle_series([100.0] * 40, 240), 60: h1}
+    watch.candles = lambda pair, interval: series[interval]
+    watch.futures_info = lambda sym: None
+    try:
+        coin = {"symbol": "TST", "kraken": "X", "futures": "", "anchor": None, "cost": None}
+        s2 = watch.score_coin(coin, TH, LADDER, prev, R)
+        assert [e["kind"] for e in s2["new_events"]] == ["take_profit"]
+        s3 = watch.score_coin(coin, TH, LADDER, json.loads(json.dumps(s2)), R)
+        assert s3["new_events"] == []                                       # same high again: no repeat
+    finally:
+        watch.candles, watch.futures_info = orig
+
+
+def test_notify_without_channels_is_safe():
+    import notify
+    for k in ("NTFY_TOPIC", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "CALLMEBOT_PHONE", "CALLMEBOT_APIKEY"):
+        os.environ.pop(k, None)
+    assert notify.channels() == []
+    notify.send_all([("test", 3)])                                          # prints, never raises
+
+
 # =================================================================== backtest engine
 sys.path.insert(0, os.path.join(HERE, "..", "backtest"))
 import backtest as BT  # noqa: E402
@@ -603,6 +672,24 @@ def test_backtest_take_profit_method():
     assert r["cash"] >= -1e-9 and r["trims"] == 2
 
 
+def test_backtest_v4_amounts():
+    # $1,000 at $100 = 10 coins (4 core, 6 trade), $500 dip reserve. Up to 121 (TP +20% at 120),
+    # down to 95 (buy-back at 96), back up to 100.
+    closes = [100.0] * 10 + [121.0, 95.0, 100.0]
+    t0 = 1_700_000_000 - 1_700_000_000 % DAY
+    d = [{"t": t0 + i * DAY, "o": c, "h": c, "l": c, "c": c, "v": 1.0} for i, c in enumerate(closes)]
+    r = BT.simulate_v4(d, 9, len(d) - 1)
+    ev = r["events"]
+    assert ev[0][1] == "JUMP OUT: take-profit +20%" and ev[0][2] == 120.0
+    close(-ev[0][4], 3.0, 1e-9)                                  # 50% of the 6 trade coins
+    got = 3 * 120 * (1 - BT.FEE)
+    close(-ev[0][3], got, 0.01)
+    assert ev[1][1] == "JUMP IN: buy-back" and ev[1][2] == 96.0
+    close(ev[1][3], got * 0.5, 0.01)                              # half the sale's money
+    close(r["coins"], 4 + 3 + got * 0.5 * (1 - BT.FEE) / 96.0, 1e-6)
+    close(r["cash"], 500 + got * 0.5, 0.01)
+
+
 def test_backtest_benchmarks():
     d = bt_series([100.0] * 10 + [50.0] * 400)
     lump = BT.simple(d, 9, len(d) - 1, "lump")
@@ -652,8 +739,12 @@ def test_end_to_end_offline_runs():
                 assert set(c["flags"]) == {"vertical", "stretched", "rsi", "leverage", "news", "fomo"}
                 assert c["bottom_count"] == sum(1 for x in c["bottoms"].values() if x["on"])
                 assert set(c["bottoms"]) == {"freefall", "stretched_down", "oversold", "shorts_crowded", "capitulation", "near_200w"}
-                for r, cfg_r in zip(c["ladder"]["rungs"], cfg["ladder"]):
-                    close(r["price"], c["ladder"]["anchor"] * (1 - cfg_r["drop"] / 100), 1e-9)
+                eng = c["engine"]
+                for o in c["orders"]:
+                    if o["kind"] == "dip_buy":
+                        close(o["price"], eng["anchor"] * (1 - o["drop"] / 100), 1e-9)
+                    if o["kind"] == "take_profit":
+                        close(o["price"], eng["ref"] * (1 + o["pct"] / 100), 1e-9)
                 close(c["trailing_stop"], c["high_90d"] * 0.75, 1e-9)
                 assert os.path.exists(os.path.join(os.path.dirname(outs[0]), "candles", c["symbol"] + ".json"))
         assert a["news"]["daily"] == b["news"]["daily"], "second run double-counted headlines"

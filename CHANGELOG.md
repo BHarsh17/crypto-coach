@@ -4,6 +4,22 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 4.0.0 · 2026-11-22
+**New rules, based on the 18-month backtest.** Your own method, tuned to the spacing that beat monthly DCA on all 5 coins:
+- **🔴 JUMP OUT:** take-profits at **+20%** and **+40%** above your base price (your average cost), each selling half your trade bucket.
+- **🟢 JUMP IN:** after each sale, buy-backs at **20%** and **40%** below the sale price, each spending half of that sale's money. A buy-back starts a new cycle, measured from what you paid.
+- **🟢 Dip ladder:** your dip reserve at −10 / −25 / −40 / −55%.
+- **🟡 HEADS UP:** the 6 top flags and 6 bottom signals become warnings ("overheated: check your sell orders", "washed out: check your buy orders") instead of triggers.
+- Removed: flag-based trims, the trailing stop, and buy-early (none of them held up in testing).
+
+**One engine, live and tested:** `watcher/engine.py` runs the orders for the live alerts *and* for the backtest's new "v4" row, so what's tested is what runs. It checks every hourly candle since the last run, so spikes between runs aren't missed.
+
+**Alerts:** ntfy (recommended; self-hostable), Telegram, and WhatsApp via CallMeBot, in any combination. JUMP alerts are high priority.
+
+**App:** each card shows your orders with prices and amounts, and the mission says exactly what to do ("Sell 3 SOL", "Buy back with $180"). The Dip reserve tab lists every order to have on Kraken. Setup shows the take-profit base the watcher uses next to your real average cost. Live prices can trigger JUMP IN / JUMP OUT on the card before the watcher's next run.
+
+**Upgrade note:** `coins.json` gains `"cost"` per coin and a `rules` block. The workflow file needs the new alert secrets (see README).
+
 ## 3.3.0 · 2026-11-22
 - **Backtest now checks your own trading method** at three spacings: take-profits at +10/+20%, +20/+40% and +30/+60% above your average cost (half the trade bucket each), with buy-backs the same distance and double the distance below each sale.
 - **Rise ladder strategies:** take-profits at +25/50/75/100% (a quarter each), with and without "sell the next one early when overheated".

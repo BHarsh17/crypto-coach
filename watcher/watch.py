@@ -9,8 +9,7 @@ something changes. Standard library only - no installs needed.
 Usage:  python watcher/watch.py [--config coins.json] [--out site/signals.json]
 Env:    PREV_URL            URL of the last published signals.json (for memory between runs)
         NO_NEWS=1           skip the news feeds (for testing)
-        TELEGRAM_BOT_TOKEN  optional, for alerts
-        TELEGRAM_CHAT_ID    optional, for alerts
+        alert channels      see watcher/notify.py (ntfy, Telegram, WhatsApp)
         DEMO_OFFLINE=1      use synthetic candles (for testing without network)
 """
 import argparse
@@ -26,7 +25,9 @@ import urllib.request
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import engine  # noqa: E402
 import news  # noqa: E402
+import notify  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 try:
@@ -185,7 +186,7 @@ def fake_candles(pair, interval):
 
 
 # ----------------------------------------------------------------- scoring
-def score_coin(coin, th, ladder, prev):
+def score_coin(coin, th, ladder, prev, rules=None):
     d = candles(coin["kraken"], 1440)
     w = candles(coin["kraken"], 10080)
     h4 = candles(coin["kraken"], 240)
@@ -260,23 +261,23 @@ def score_coin(coin, th, ladder, prev):
         "near_200w": {"on": bool(near200w), "detail": f"200-week avg {money(ma200w)} ({fmtp(pct(price, ma200w))} away)"},
     }
 
-    # --- dip ladder
-    anchor = coin.get("anchor")
-    p_lad = (prev or {}).get("ladder") or {}
-    p_anchor = p_lad.get("anchor")
-    if anchor is None:
-        anchor = p_anchor or price
-    reset = p_anchor is not None and abs(anchor - p_anchor) > 1e-12
-    fresh = reset or not p_lad
-    anchor_ts = now_ts() if fresh else p_lad.get("anchor_ts", now_ts())
-    low = price if fresh else min(p_lad.get("low_since", price), price)
-    for c in d:
-        if c["t"] >= anchor_ts:
-            low = min(low, c["l"])
-    rungs = []
-    for i, r in enumerate(ladder):
-        rp = anchor * (1 - r["drop"] / 100)
-        rungs.append({"n": i + 1, "drop": r["drop"], "share": r["share"], "price": rp, "hit": low <= rp})
+    # --- v4 orders engine (take-profits, buy-backs, dip ladder)
+    rules = rules or engine.DEFAULT_RULES
+    cost, anchor_cfg = coin.get("cost"), coin.get("anchor")
+    est = (prev or {}).get("engine")
+    if not est:
+        est = engine.new_state(cost or price, anchor_cfg or price, rules)
+        est["last_ts"] = now_ts()
+        new_events = []
+    else:
+        engine.sync_config(est, cost, anchor_cfg, rules)
+        since = est.get("last_ts", now_ts())
+        src = h1 if h1 and since >= h1[0]["t"] else d          # hourly detail, or daily after a long gap
+        period = [c for c in src if c["t"] + (3600 if src is h1 else 86400) > since]
+        hi = max([c["h"] for c in period] + [price])
+        lo = min([c["l"] for c in period] + [price])
+        new_events = engine.step(est, hi, lo, now_ts(), rules)
+        est["last_ts"] = now_ts()
 
     trail = high90 * (1 - th["trailing_stop_pct"] / 100)  # reference only; the app's stop uses the peak since your trim
 
@@ -292,7 +293,7 @@ def score_coin(coin, th, ladder, prev):
         "funding": funding, "open_interest": fut.get("oi") if fut else None, "oi_growth_7d": rnd(oi_growth),
         "flags": flags, "auto_flag_count": None,  # set after the news step
         "bottoms": bottoms, "bottom_count": sum(1 for b in bottoms.values() if b["on"]),
-        "ladder": {"anchor": anchor, "anchor_ts": anchor_ts, "low_since": low, "rungs": rungs},
+        "engine": est, "orders": engine.open_orders(est, rules), "new_events": new_events,
         "trailing_stop": trail,
         "oi_history": oi_hist,
         "spark": [round(c, 8) for c in closes[-60:]],
@@ -324,45 +325,35 @@ def tier(n):
 
 
 def build_alerts(s, first_run):
-    msgs = []
+    """Returns [(text, priority)] for this coin. Priority 4 = act now, 3 = heads-up."""
+    out = []
+    sym = s["symbol"]
+    if not first_run:
+        for e in s.get("new_events", []):
+            if e["kind"] == "take_profit":
+                out.append((f"🔴 JUMP OUT · {sym} reached {money(e['price'])}, your +{e['pct']}% take-profit. "
+                            f"Sell {e['share']}% of your trade bucket (the app shows how many coins). "
+                            f"Buy-back orders are now set below it.", 4))
+            elif e["kind"] == "buy_back":
+                out.append((f"🟢 JUMP IN · {sym} fell to {money(e['price'])}: buy back with {e['share']:.0f}% "
+                            f"of the money from that sale. Your next take-profits restart from here.", 4))
+            elif e["kind"] == "dip_buy":
+                out.append((f"🟢 JUMP IN · {sym} dropped to {money(e['price'])} (dip rung {e['rung']}): "
+                            f"spend {e['share']}% of your {sym} dip reserve.", 4))
     al = s["alerted"]
     t = tier(s["auto_flag_count"])
     if t > al.get("tier", 0) and not first_run:
-        names = [k for k, f in s["flags"].items() if f["on"]]
-        msgs.append(f"🔥 {s['symbol']} {s['auto_flag_count']}/6 top flags ({', '.join(FLAG_NAMES.get(n, n) for n in names)}) "
-                    f"at {money(s['price'])}. Open the app: your rule may say trim.")
+        names = [FLAG_NAMES.get(k, k) for k, f in s["flags"].items() if f["on"]]
+        out.append((f"🟡 HEADS UP · {sym} looks overheated at {money(s['price'])} ({s['auto_flag_count']}/6: "
+                    f"{', '.join(names)}). Make sure your take-profit orders are set.", 3))
     al["tier"] = t
-    hit = [r["n"] for r in s["ladder"]["rungs"] if r["hit"]]
-    old = set(al.get("rungs", []))
-    new = [n for n in hit if n not in old]
-    if new and not first_run:
-        for n in new:
-            r = s["ladder"]["rungs"][n - 1]
-            msgs.append(f"🪜 {s['symbol']} ladder rung {n} reached ({money(r['price'])}, −{r['drop']}%). "
-                        f"Rule: deploy {r['share']}% of your {s['symbol']} dip reserve. Log it in the app for XP.")
-    al["rungs"] = hit
     bt = tier(s["bottom_count"])
     if bt > al.get("btier", 0) and not first_run:
         names = [k.replace("_", " ") for k, b in s["bottoms"].items() if b["on"]]
-        msgs.append(f"🧊 {s['symbol']} {s['bottom_count']}/6 bottom signals ({', '.join(names)}) at {money(s['price'])}. "
-                    f"Open the app: your rule may say buy your next ladder rung early.")
+        out.append((f"🟡 HEADS UP · {sym} looks washed out at {money(s['price'])} ({s['bottom_count']}/6: "
+                    f"{', '.join(names)}). Make sure your buy orders are set.", 3))
     al["btier"] = bt
-    # (no trailing-stop alert here: your stop trails the peak since YOUR first trim,
-    #  which only the app knows, because trims are private to your browser)
-    return msgs
-
-
-def telegram(text):
-    tok, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
-    if not tok or not chat:
-        print("[telegram not configured]\n" + text)
-        return
-    body = urllib.parse.urlencode({"chat_id": chat, "text": text}).encode()
-    req = urllib.request.Request(f"https://api.telegram.org/bot{tok}/sendMessage", data=body, headers=UA)
-    try:
-        urllib.request.urlopen(req, timeout=20).read()
-    except Exception as e:  # noqa: BLE001
-        print("telegram failed:", e, file=sys.stderr)
+    return out
 
 
 # ----------------------------------------------------------------- main
@@ -453,7 +444,7 @@ def main():
     out, new_coin = [], set()
     for coin in cfg["coins"]:
         try:
-            s = score_coin(coin, th, cfg["ladder"], prev_coins.get(coin["symbol"]))
+            s = score_coin(coin, th, cfg["ladder"], prev_coins.get(coin["symbol"]), engine.rules_from(cfg.get("rules")))
             cdir = os.path.join(os.path.dirname(a.out) or ".", "candles")
             os.makedirs(cdir, exist_ok=True)
             with open(os.path.join(cdir, f"{coin['symbol']}.json"), "w") as f:
@@ -501,7 +492,7 @@ def main():
         "version": VERSION,
         "source": "Kraken public API" if not os.environ.get("DEMO_OFFLINE") else "synthetic test data",
         "thresholds": th,
-        "ladder": cfg["ladder"],
+        "rules": engine.rules_from(cfg.get("rules")),
         "coins": out,
         "news": dict(state, sources=status, trending=trending),
     }
@@ -515,9 +506,9 @@ def main():
         lines = [f"✅ Crypto Coach watcher is live. Tracking {', '.join(c['symbol'] for c in out)}."]
         for c in out:
             lines.append(f"{c['symbol']} {money(c['price'])} · top flags {c['auto_flag_count']}/6 · bottom signals {c['bottom_count']}/3")
-        telegram("\n".join(lines))
+        notify.send_all([("\n".join(lines), 3)])
     elif alerts:
-        telegram("\n\n".join(alerts))
+        notify.send_all(alerts)
 
 
 if __name__ == "__main__":

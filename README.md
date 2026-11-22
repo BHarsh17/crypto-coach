@@ -1,8 +1,10 @@
 # Crypto Coach
 
-**Version:** see `VERSION` (currently 3.3.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+**Version:** see `VERSION` (currently 4.0.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
 
-**Your rules, not your gut.** Crypto Coach watches your coins, checks them against rules you set ahead of time, and tells you what those rules say to do: hold, buy a dip rung, trim a pump, or follow a stop. You still make every trade. It just makes sure the plan gets followed instead of the panic.
+**Your rules, not your gut.** Crypto Coach keeps a set of buy and sell orders for each coin, watches the price around the clock, and pings your phone the moment one is reached: **🔴 JUMP OUT** (take profit), **🟢 JUMP IN** (buy back or buy the dip), or **🟡 HEADS UP** (something's going on). You still make every trade. It just makes sure the plan gets followed instead of the panic.
+
+**The v4 plan in one line:** sell half your trade coins at +20% and the other half at +40% above what you paid, buy back 20% and 40% below each sale, and keep a dip reserve on a −10 / −25 / −40 / −55% ladder. This was the most consistent approach in the 18-month backtest across ETH, SOL, XRP, QNT and BTC: it beat monthly DCA on all five.
 
 > These are rule-based signals, not predictions or financial advice. They can't promise what the market will do. They make sure *your* plan gets followed.
 
@@ -14,10 +16,10 @@
 3. [What happens in the app](#3-what-happens-in-the-app)
 4. [The 6 top-warning flags](#4-the-6-top-warning-flags)
 5. [The 6 bottom signals](#5-the-6-bottom-signals)
-6. [The dip ladder](#6-the-dip-ladder)
-7. [Buckets, trims and the trailing stop](#7-buckets-trims-and-the-trailing-stop)
+6. [Your orders: take-profits, buy-backs, dip ladder](#6-your-orders-take-profits-buy-backs-dip-ladder)
+7. [Buckets and amounts](#7-buckets-and-amounts)
 8. [How a coin's mission is chosen](#8-how-a-coins-mission-is-chosen)
-9. [Telegram alerts](#9-telegram-alerts)
+9. [Alerts on your phone](#9-alerts-on-your-phone)
    - [The News tab](#the-news-tab)
 10. [Trust guards: how it avoids false info](#10-trust-guards-how-it-avoids-false-info)
 11. [The game: XP and levels](#11-the-game-xp-and-levels)
@@ -49,7 +51,7 @@ There are two parts. One does the thinking, the other shows it to you.
                     https://bharsh17.github.io/crypto-coach/
                                         │
 ┌───────────────────────────── THE APP (your PC / phone) ──────────────────────┐
-│  reads signals.json every 5 min  ─►  rules, flags, ladder, missions          │
+│  reads signals.json every 5 min  ─►  your orders, heads-up flags, missions   │
 │  live Kraken WebSocket feed      ─►  prices + candles tick in real time      │
 │  your browser storage            ─►  holdings, reserve, XP, journal (private)│
 └───────────────────────────────────────────────────────────────────────────────┘
@@ -65,7 +67,7 @@ There are two parts. One does the thinking, the other shows it to you.
 | Missions on each card | Re-checked every **20 s** with the live price | App |
 | Flags, RSI, averages, bottom signals, news | App re-reads every **5 min** | Watcher's `signals.json` |
 | The watcher | Every **15 min** (GitHub may start it a few minutes late) | GitHub Actions |
-| Telegram alerts | Only when a rule changes | Watcher |
+| Phone alerts (ntfy / Telegram / WhatsApp) | Only when an order is reached or a heads-up starts | Watcher |
 
 **Why the flags aren't real-time:** every flag is built on daily or weekly candles, so they barely change minute to minute. Checking faster would add noise, not information.
 
@@ -89,7 +91,7 @@ Each run of the workflow (`.github/workflows/watch.yml`) does this, in order:
    - Calculate the indicators, then flags 1–4, the bottom signals and the ladder.
    - Write the coin's chart file (`candles/SYMBOL.json`).
 4. **News step:** read the 7 fixed news feeds and CoinGecko's trending list, match headlines to your coins, update the hype meter, and set flags 5–6 (news priced in, social FOMO).
-5. **Send Telegram alerts** for anything that changed since last run.
+5. **Check your orders and send alerts:** update the take-profit, buy-back and dip orders from every hourly candle since the last run, and send JUMP IN / JUMP OUT / HEADS UP to your phone for anything new.
 6. **Backtest** (`backtest/backtest.py`, once a day): replays the rules on 18 months of Kraken prices and writes `backtest.json`. If it fails, the run carries on without it.
 7. **Publish** `index.html` (the app) + `signals.json` + `candles/` to GitHub Pages.
 
@@ -117,14 +119,14 @@ A run takes about 30 seconds. On a public repo it's free with no limits.
 
 The app is one web page (`site/index.html`). Open it at **https://bharsh17.github.io/crypto-coach/** on your PC or phone. On your phone, use *Add to Home Screen*.
 
-- **Missions tab:** one card per coin, showing the live price, a chart, **one mission** (what your rules say right now), the flags, the bottom signals, the dip ladder and your buckets.
+- **Missions tab:** one card per coin: the live price, a chart, **one mission** (what to do right now), **your orders** (with prices and amounts), your buckets, and the heads-up flags and signals.
 - **News tab:** the hype meter and every headline the watcher matched to your coins (see [The News tab](#the-news-tab)).
 - **Backtest tab:** what these exact rules would have done over the last 18 months of real prices, for each coin plus BTC. It compares the rules as built, several variations, a take-profit "rise ladder", your own manual take-profit method at three spacings, monthly DCA, buying everything on day 1, and keeping cash, with an overall ranking across coins. Scored by total value in coins (coins + cash at the final price). Recalculated once a day.
-- **Dip reserve tab:** your cash pool for buying dips, how much each coin has used, and a **list of limit orders to place** on your exchange.
+- **Dip reserve tab:** **every order to have on Kraken**, for all coins, with amounts; your dip money per coin; and the sale money waiting to buy back.
 - **Journal tab:** how XP works, then everything you've logged, with XP.
 - **Setup tab:** your holdings, average cost, dip reserve and backup.
 - **😰 I want to sell:** shows your rules and offers a 24-hour cooldown instead of a panic sale.
-- **Charts:** tap a card's chart or 📈 Chart. You get live candles with the 20/50/200 averages, ladder rungs, trailing stop and your average cost drawn on. **Make decisions on 1D, check the big picture on 1W.** 1H and 4H are for watching, not acting.
+- **Charts:** tap a card's chart or 📈 Chart. You get live candles with the 20/50/200 averages, your sell orders (red), buy-backs (green), dip ladder (blue) and your average cost drawn on. **Make decisions on 1D, check the big picture on 1W.** 1H and 4H are for watching, not acting.
 
 ### The live dots
 - **Top right "● live" (green):** the Kraken feed is connected and sending data.
@@ -134,7 +136,9 @@ The app is one web page (`site/index.html`). Open it at **https://bharsh17.githu
 
 ## 4. The 6 top-warning flags
 
-The flags warn that a coin **may be topping out**, the "too good to be true" moment, like QNT going from about $65 to $372 in late September 2026. Each flag is either **on** (red dot) or **off**. The count, out of 6, decides whether your trim rule kicks in.
+**In v4 the flags are heads-up warnings, not sell triggers.** Your sells come from your take-profit orders (section 6). When 3 or more flags are on, you get a 🟡 HEADS UP ("overheated: make sure your take-profit orders are set"). The backtest showed they rarely fire, but when they do (QNT, September 2026) they matter.
+
+The flags warn that a coin **may be topping out**, the "too good to be true" moment, like QNT going from about $65 to $372 in late September 2026. Each flag is either **on** (red dot) or **off**. 3 or more on gives a heads-up.
 
 **All 6 are set automatically by the watcher**, with fixed rules, every 15 minutes. Flags 1–4 come from price and futures data; flags 5–6 come from fixed news outlets and CoinGecko's trending list.
 
@@ -193,22 +197,11 @@ The price condition is there so a coin trending because it *crashed* never count
 Tap the **News priced in** or **Social FOMO** chip on a coin card to override it if you think the rule got it wrong. Each tap cycles **automatic → forced ON → forced OFF → automatic**. Overrides last **7 days** and are stored in your browser only. Flags 1–4 can't be overridden, because they're pure maths.
 
 ### What the count means
-
-| Flags on | Level | Your rule |
-|---|---|---|
-| 0–2 | — | Hold. Watch it, don't act. |
-| **3** | Level 1 | Trim **25%** of the trade bucket |
-| **4–5** | Level 2 | Trim to **50%** total |
-| **6** | Level 3 | Trim to **75%** total. The last 25% is your **moonbag**, protected by the trailing stop. |
-
-### Top flags vs. bottom signals
-There are 6 of each, built as mirror images, with the same 3 / 4–5 / 6 levels. Buying never *waits* for bottom signals: your core buys run on a schedule and ladder rungs fill on price alone. Bottom signals only tell you to buy the next rung **early**.
-
-**Top flags = trim (sell part of the trade bucket). Bottom signals = buy the next ladder rung early.** Neither ever touches your core.
+3 or more flags on gives a 🟡 **HEADS UP · overheated** on the card and on your phone. It doesn't sell anything by itself; it tells you to check that your take-profit orders are in place.
 
 ## 5. The 6 bottom signals
 
-These are the buy-side mirror of the top flags. Each one lights up (blue dot) when a coin looks **washed out**, and each matches a top flag pointing the other way:
+These are the buy-side mirror of the top flags. **In v4 they're heads-up warnings too:** 3 or more gives a 🟡 **HEADS UP · washed out** ("make sure your buy orders are set"). Your actual buys come from the dip ladder and buy-backs (section 6). Each one lights up (blue dot) when a coin looks **washed out**, and each matches a top flag pointing the other way:
 
 | Bottom signal | ON when | Mirror of |
 |---|---|---|
@@ -221,139 +214,105 @@ These are the buy-side mirror of the top flags. Each one lights up (blue dot) wh
 
 *Settings: `freefall_7d_pct`, `freefall_30d_pct`, `stretched_down_ma50_pct`, `stretched_down_ma20_pct`, `rsi_daily_cold`, `rsi_weekly_cold`, `funding_cold_8h`, `capitulation_volume_x`, `capitulation_drop_pct`, `near_200w_pct`*
 
-### The buy-early rule
-Your ladder already buys when the price falls to each rung. Bottom signals add one thing: **buy the next rung early**, before the price gets there, because several independent signs say the coin is washed out.
+## 6. Your orders: take-profits, buy-backs, dip ladder
 
-| Bottom signals on | Level | Your rule |
+The watcher keeps three kinds of orders for each coin, from public prices only. They're the same orders you place on Kraken as limit orders, so most of them fill on their own.
+
+### 🔴 Take-profits (JUMP OUT)
+| Order | Price | Sells |
 |---|---|---|
-| 0–2 | — | Wait. Ladder orders stay in place; core buys continue. |
-| **3** | Level 1 | Buy your **next ladder rung now** |
-| **4–5** | Level 2 | Buy up to your **next 2 rungs** in total |
-| **6** | Level 3 | Buy up to your **next 3 rungs** in total (the last rung stays as a reserve) |
+| Take-profit 1 | **base × 1.20** (+20%) | **50%** of your trade bucket |
+| Take-profit 2 | **base × 1.40** (+40%) | the other **50%** |
 
-- The dollar amount is exactly what those rungs would have spent, so it's never more than that coin's share of your dip reserve.
-- Rungs bought early are marked done, so a limit order for them should be cancelled on your exchange. The *Dip reserve* tab only lists rungs you still need.
-- Each level fires once per ladder. A new ladder anchor resets it.
-- If the price reaches a rung on its own, that buy comes first.
+**Base price:** your average cost, from `coins.json` → that coin's `"cost"`, or the price on the watcher's first run if it's `null`. After a buy-back fills, the base becomes **what you paid to buy back** (the average, if both fill), and fresh take-profits are measured from there. Dip-ladder buys don't move the base.
 
-## 6. The dip ladder
+"50% of your trade bucket" means 50% of the trade coins you held when the cycle started, so both take-profits sell the same amount.
 
-The ladder is your plan for buying drops with your **dip reserve** (cash set aside only for dips).
+### 🟢 Buy-backs (JUMP IN)
+Every take-profit sale creates two buy-back orders **below that sale's price**:
+| Order | Price | Spends |
+|---|---|---|
+| Buy-back 1 | **sale × 0.80** (−20%) | **half** of that sale's money |
+| Buy-back 2 | **sale × 0.60** (−40%) | the other **half** |
 
-**Anchor:** the price the drops are measured from. By default it's the price on the **first run after a coin was added**, and the watcher remembers it. To measure from a different price, such as your average cost, set `"anchor"` for that coin in `coins.json`. Changing it resets that coin's ladder.
+This is "sell 3, buy back 3 lower", automated. When a buy-back fills, a new cycle starts.
 
-**Rungs (defaults):**
-
+### 🟢 Dip ladder (JUMP IN)
+Your dip reserve, on four rungs below the ladder's start (`"anchor"` in `coins.json`, or the first-run price):
 | Rung | Price | Spends |
 |---|---|---|
-| 1 | anchor − 10% | 25% of that coin's reserve |
-| 2 | anchor − 20% | 25% |
-| 3 | anchor − 30% | 25% |
-| 4 | anchor − 40% | 25% |
+| 1 | −10% | 25% of that coin's dip money |
+| 2 | −25% | 25% |
+| 3 | −40% | 25% |
+| 4 | −55% | 25% |
 
-**Dollar amount per rung** = *dip reserve pool* × *that coin's share %* × *rung share %*.
-Example: $2,000 pool × SOL 30% × 25% = **$150** at each SOL rung.
+Each rung is used once. To restart the ladder from a new price, change `"anchor"` in `coins.json`.
 
-**When a rung counts as "reached":**
-- **Watcher:** if the **lowest price since the anchor was set** touched the rung. Once reached, it stays reached, just like a limit order that filled on a wick.
-- **App:** also marks it reached right away if the **live price** is at or below it.
+### How an order "fills"
+Exactly like a limit order on an exchange: a **sell** fills if the price **reaches or goes above** it, a **buy** if it **reaches or goes below** it. The watcher checks every hourly candle since its last run, so it catches spikes between runs. An order created during a run (for example, buy-backs right after a sale) can't fill until the next run, because a candle doesn't show whether its high or its low came first.
 
-**On the card:** grey = waiting, blue = reached (go buy it, or check that your limit order filled), green ✓ = you logged the buy.
-
-**Best practice:** put these as **limit orders on your exchange ahead of time**. The *Dip reserve* tab lists them. Then dips get bought even if you're asleep or frozen.
+### Changing the numbers
+All of it is in `coins.json` → `rules`: `take_profits` (e.g. `[30, 60]`), `take_profit_share`, `buy_backs`, `dip_ladder`. The backtest showed +20/+40 as the most consistent and +30/+60 with the highest average, so either is reasonable.
 
 ---
 
-## 7. Buckets, trims and the trailing stop
-
-Each coin is split into two buckets, set in **Setup**:
+## 7. Buckets and amounts
 
 | Bucket | What it is | Rules that apply |
 |---|---|---|
-| **Core / staked** | Your long-term stack, e.g. what you stake | **Never sold on flags.** Only grows. |
-| **Trade** | The part you're willing to trade around pumps | Flag trims and the trailing stop apply here **only** |
+| **Core / staked** | Your long-term stack | **Never sold.** Only grows. |
+| **Trade** | The part you swing-trade | Take-profits sell from here; buy-backs and dip buys add to it (or to core, if you choose when logging) |
 
-### Trims
-When the flag count reaches a new level (section 4), the mission says exactly how many coins to sell, as a share of the trade bucket at the **start of the trim cycle**. The percentages are cumulative, so they don't compound:
-- Level 1 → sell 25% of the starting trade bucket
-- Level 2 → sell another 25% (50% total)
-- Level 3 → sell another 25% (75% total), keeping 25% as the moonbag
+**Amounts are calculated in the app** from your holdings, which never leave your browser. The watcher only knows prices and percentages; the app turns "50% of your trade bucket" into "3 SOL" and "25% of your dip money" into "$150".
 
-When you log a trim, the **proceeds go into your dip reserve automatically**, so pumps fund your next dips.
-
-**A trim cycle resets when:** you log a ladder-rung buy, you log a trailing-stop sale, or you press **Setup → Start a new trim cycle**.
-
-### Trailing stop
-Your stop **trails the highest price since your first trim of the cycle**, minus 25%. It starts at the price you logged for that first trim, and every new high after that (from live prices and the watcher's hourly and daily candles) raises it. It's drawn on the chart as **"your stop"** once you've trimmed.
-
-**Mission fires when:** you've **trimmed at least once this cycle**, still hold trade coins, **and** the price is at or below the stop. The rule is to sell the moonbag. Core stays.
-
-**Why from your trim, not an older high:** if the coin was much higher months ago, a stop measured from that old high could fire the moment you trim. Measuring from your own trim means the stop only protects the gains from *this* run-up.
-*Setting: `trailing_stop_pct`*
+When you log a sale, the money is set aside for that sale's buy-backs. When you log a buy-back, it's taken from there. Dip-ladder buys come from your dip reserve (Setup → dip reserve and each coin's share).
 
 ---
 
 ## 8. How a coin's mission is chosen
 
-The app checks these **in order** and shows the first one that applies:
-
 | # | Mission | When |
 |---|---|---|
-| 1 | ⏸ **Rules paused** | The watcher hasn't published for **6+ hours**, so flags could be wrong |
-| 2 | ⏸ **Data is stale** | This coin failed its last watcher run, so its old data is shown |
-| 3 | 🛑 **Trailing stop hit** | Section 7 |
-| 4 | 🔥 **Trim** | 3+ of the 6 flags and a higher level than you've already trimmed. With no trade bucket, it becomes a "don't chase it" warning instead. |
-| 5 | 🪜 **Ladder rung reached** | A reached rung you haven't logged yet |
-| 6 | 🧊 **Buy early** | 3+ of the 6 bottom signals and a higher level than you've already bought at (section 5) |
-| 7 | 👀 **Hold · N/6 flags** | 1–2 flags: watch, don't act |
-| 8 | ✅ **Hold** | Nothing triggered. Doing nothing *is* the move. |
+| 1 | ⏸ **Rules paused** / **Data is stale** | The watcher hasn't published for 6+ hours, or this coin failed its last run |
+| 2 | 🔴 **JUMP OUT** | A take-profit was reached (reported by the watcher, or the live price is at or over it right now) |
+| 3 | 🟢 **JUMP IN** | A buy-back or dip rung was reached |
+| 4 | 🟡 **HEADS UP · overheated** | 3+ top flags |
+| 5 | 🟡 **HEADS UP · washed out** | 3+ bottom signals |
+| 6 | ✅ **Hold** | Nothing reached. The card shows your next sell and next buy prices. |
 
-Every mission says **why** (which flags or signals are on), and uses the **live price** whenever it's trustworthy (section 10).
+For JUMP OUT and JUMP IN, tap **I sold ✓** / **I bought ✓** (the amounts are pre-filled; adjust them to what actually happened), or **Didn't sell / Didn't buy**. Either way the mission clears. Orders reached before you started using v4 are ignored.
 
 ---
 
-## 9. Telegram alerts
+## 9. Alerts on your phone
 
-The watcher sends a message **only when something changes**, never the same alert twice:
+Set up **any combination** in GitHub → Settings → Secrets and variables → Actions:
+
+| Channel | Secrets | Notes |
+|---|---|---|
+| **ntfy** (recommended) | `NTFY_TOPIC`; optional `NTFY_SERVER` and `NTFY_TOKEN` | Free. Use a long random topic name on ntfy.sh, or your own server later (`NTFY_SERVER` = its address, `NTFY_TOKEN` = an access token). On Android, the F-Droid app can skip Google entirely. |
+| **Telegram** | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Free, instant |
+| **WhatsApp** | `CALLMEBOT_PHONE`, `CALLMEBOT_APIKEY` | Through the free CallMeBot relay (personal use). Can take a few seconds. |
+
+**What you'll get**, each only once:
 
 | Alert | When |
 |---|---|
 | ✅ Watcher is live | The very first run |
-| 🔥 Top flags | The flag count reaches a higher level: 3, then 4, then 6 |
-| 🪜 Ladder rung | A rung is reached for the first time |
-| 🧊 Bottom signals | The bottom-signal count reaches a higher level: 3, then 4, then 6 |
+| 🔴 JUMP OUT | A take-profit is reached |
+| 🟢 JUMP IN | A buy-back or dip rung is reached |
+| 🟡 HEADS UP · overheated | Top flags reach 3, then 4, then 6 |
+| 🟡 HEADS UP · washed out | Bottom signals reach 3, then 4, then 6 |
 
-There's no Telegram alert for the trailing stop, because it depends on when *you* trimmed, which only your app knows. The app's mission shows it instantly.
-
-Telegram is optional. Without the two secrets set up, the watcher still runs; it just doesn't message you.
-
-### The News tab
-- **Hype meter:** one panel per coin showing daily mentions for the last 14 days (amber bars = the last 3 days), the spike ratio versus normal (or "baseline n/7 days" while it's still learning), catalyst and hype counts, trending rank, and whether flags 5–6 are on.
-- **Sources line:** a ✓ or ✗ for each news feed this run, plus CoinGecko's trending list. A failed feed is skipped and shown, never hidden.
-- **Headlines:** the last 7 days, filterable by coin (or **Market** for macro news) and by tag. Every headline links to the original article.
-
-**The fixed sources** (in `coins.json` → `news_sources`):
-
-| Source | What it covers |
-|---|---|
-| CoinDesk, Cointelegraph, Decrypt, The Block, CryptoSlate | General crypto news. A headline counts for a coin when it matches that coin's keywords. |
-| Ethereum Foundation blog | Official, counts for ETH and is tagged **official** |
-| Solana news (solana.com) | Official, counts for SOL and is tagged **official** |
-
-No official feed was available for Ripple, so XRP is covered by the five outlets.
-
-**How headlines are matched and tagged** (fixed word lists, no AI):
-- **Coin match:** the coin's `keywords` as whole words, in the headline or its summary. ALL-CAPS tickers must match exactly, so "SOL" counts but "sol" or "solo" don't; names like "Solana" match in any case.
-- **Tags** (headline only): **catalyst** (partnership, ETF, listing, approval, launch, mainnet, upgrade, integration, adoption…), **hype** (soars, skyrockets, surge, rally, all-time high, price prediction, could hit, 100x…), **risk** (hack, exploit, outage, lawsuit, delist, crash, probe…), **macro** (Fed, FOMC, rate cut/hike, inflation, CPI, tariffs, Powell…), **official** (from a project's own feed).
-- The same story covered by 3 outlets counts as 3 mentions. More coverage means more hype, and that's what the meter measures.
-- A tag can occasionally be wrong. Every flag shows the counts behind it, and the headlines are right there to check.
+JUMP alerts are sent as high priority on ntfy; heads-ups as normal. No alert means hold.
 
 ## 10. Trust guards: how it avoids false info
 
 **No AI calculates any number or sets any flag.** Everything is plain, tested arithmetic on Kraken's data, fixed keyword rules on fixed news outlets, and CoinGecko's trending list.
 
 **On GitHub (watcher):**
-- **Maths self-test before every run** (30 checks: reference values, independent cross-checks, boundary scenarios). If it fails, nothing is published.
+- **Maths self-test before every run** (49 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtest). If it fails, nothing is published.
+- **One engine for live and backtest:** the orders you're alerted on come from the same code (`watcher/engine.py`) the backtest replays, so what you were shown in testing is what runs live.
 - **News safety:** headlines are de-duplicated across runs, never counted twice, and articles dated in the future are treated as "now". Only web links (`http`/`https`) are kept from feeds. If every news feed fails, flag 5 stays off for that run rather than guessing.
 - **Bad data is rejected,** never used. A coin is rejected if Kraken returns fewer than 30 candles, candles out of time order, an impossible candle (low above the open or close, or high below them), or a latest candle that's too old.
 - **If one coin fails,** the others still update, and that coin keeps its last good data, marked **stale**. Its mission pauses.
@@ -376,9 +335,8 @@ XP rewards **following your rules**, not making money. Profit is the market's jo
 |---|---|
 | Daily check-in (once a day) | +10 |
 | Logging a core buy | +15 |
-| Buying a ladder rung | +50 |
-| Trimming on flags | +60 |
-| Following the trailing stop | +60 |
+| Jumping out on a take-profit | +60 |
+| Jumping in on a buy-back or dip rung | +50 |
 | Finishing a 24h cooldown instead of panic-selling | **+100** |
 | Honestly logging a skip | +5 |
 | Off-plan sell | −30 (and your streak resets) |
@@ -393,7 +351,7 @@ XP rewards **following your rules**, not making money. Profit is the market's jo
 | Public (anyone with the link) | Private |
 |---|---|
 | The code: app, watcher, tests | Holdings, average costs, buckets |
-| `coins.json`: which coins, your rule settings, news sources | Dip reserve amounts, XP, journal, trims, your flag overrides: **your browser only** |
+| `coins.json`: which coins, your rule settings, news sources | Dip reserve amounts, XP, journal, your sales and buy-backs, your flag overrides: **your browser only** |
 | `signals.json` + charts: market data | Telegram token and chat ID: **GitHub Secrets** |
 | The app page (opens **empty** for anyone else) | Your GitHub login, your exchange accounts (never connected) |
 

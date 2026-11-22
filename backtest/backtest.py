@@ -7,7 +7,9 @@ for the signals (so the maths is identical to the live app) and applies the
 app's rules: ladder rungs, buy-early, trims, trailing stop.
 
 Strategies compared, all starting with the same coins + the same cash reserve:
-  app          the rules exactly as built
+  v4           the live v4 rules (take-profits +20/+40%, buy-backs -20/-40% below each sale,
+               deep dip ladder), run by the same engine as the watcher
+  app          the v3 rules (flag trims, ladder, buy-early)
   ladder_only  the same but without the buy-early rule
   reanchor     ladder only, and after every trim the ladder moves to the trim price
   hybrid       half the reserve on a monthly schedule, half on a deeper ladder
@@ -31,6 +33,7 @@ from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "watcher"))
+import engine  # noqa: E402
 import watch  # noqa: E402
 
 DAY = 86400
@@ -245,6 +248,47 @@ def simulate_tp(daily, i0, i1, signals, th, tp_levels, tp_share, rebuy, dip, fla
     return finish(st, daily[i1]["c"], p0, events, sells)
 
 
+def simulate_v4(daily, i0, i1, rules=None):
+    """The live v4 rules, driven by the SAME engine the watcher uses."""
+    rules = rules or engine.DEFAULT_RULES
+    p0 = daily[i0]["c"]
+    held = START_HOLDING_USD / p0
+    st = {"core": held * CORE_SHARE, "trade": held * (1 - CORE_SHARE), "cash": RESERVE_USD, "fees": 0.0}
+    eng = engine.new_state(p0, p0, rules)
+    proceeds, events, sells = {}, [], 0
+    base = {"cycle": None, "trade": 0.0}
+    for i in range(i0 + 1, i1 + 1):
+        c = daily[i]
+        for e in engine.step(eng, c["h"], c["l"], c["t"], rules):
+            px = e["price"]
+            if e["kind"] == "take_profit":
+                if base["cycle"] != e["cycle"]:
+                    base.update(cycle=e["cycle"], trade=st["trade"])
+                q = min(st["trade"], base["trade"] * e["share"] / 100)
+                if q <= 1e-12:
+                    continue
+                got = q * px * (1 - FEE)
+                st["trade"] -= q
+                st["cash"] += got
+                st["fees"] += q * px * FEE
+                proceeds[e["id"]] = got
+                sells += 1
+                events.append([day(c["t"]), f"JUMP OUT: take-profit +{e['pct']}%", round(px, 6), round(-got, 2), round(-q, 6)])
+            else:
+                usd = (proceeds.get(e["sale_id"], 0.0) * e["share"] / 100 if e["kind"] == "buy_back"
+                       else RESERVE_USD * e["share"] / 100)
+                usd = min(usd, st["cash"])
+                if usd <= 0.005:
+                    continue
+                q = usd * (1 - FEE) / px
+                st["cash"] -= usd
+                st["trade"] += q
+                st["fees"] += usd * FEE
+                why = "JUMP IN: buy-back" if e["kind"] == "buy_back" else f"JUMP IN: dip rung {e['rung']}"
+                events.append([day(c["t"]), why, round(px, 6), round(usd, 2), round(q, 6)])
+    return finish(st, daily[i1]["c"], p0, events, sells)
+
+
 def finish(st, end_px, p0, events, trims=0):
     coins = st["core"] + st["trade"]
     start_coins = START_HOLDING_USD / p0
@@ -311,6 +355,7 @@ def backtest_coin(symbol, daily, weekly, months, cfg, now=None):
     sig = make_signal_fn(daily, weekly, th, ladder)
     deep = [{"drop": 10, "share": 25}, {"drop": 25, "share": 25}, {"drop": 40, "share": 25}, {"drop": 55, "share": 25}]
     res = {
+        "v4": simulate_v4(daily, i0, i1, engine.rules_from(cfg.get("rules"))),
         "app": simulate(daily, i0, i1, sig, ladder, th),
         "ladder_only": simulate(daily, i0, i1, sig, ladder, th, buy_early=False),
         "reanchor": simulate(daily, i0, i1, sig, ladder, th, buy_early=False, reanchor_on_trim=True),
