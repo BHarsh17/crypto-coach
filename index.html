@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crypto Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0f17;--panel:#121826;--panel2:#18203a;--line:#26304a;--text:#e7ecf5;--muted:#8a96b0;
+  --green:#3ddc97;--red:#ff5c7a;--amber:#ffb547;--blue:#5aa9ff;--violet:#a98bff;--ice:#7fe3ff;
+  --r:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:"Space Grotesk",system-ui,sans-serif}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+a{color:var(--blue)}
+.wrap{max-width:1100px;margin:0 auto;padding:18px 16px 60px}
+header{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
+.brand{display:flex;gap:10px;align-items:center}
+.brand h1{font-size:22px;margin:0;letter-spacing:.3px}
+.brand .tag{font-size:12px;color:var(--muted)}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--green),var(--blue));display:grid;place-items:center;font-weight:700;color:#06121b}
+.player{display:flex;gap:14px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;min-width:300px}
+.lvl{font-weight:700}
+.xpbar{height:8px;background:#0a0e18;border-radius:6px;overflow:hidden;width:170px;margin-top:5px}
+.xpbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--violet),var(--blue))}
+.streak{font-size:13px;color:var(--amber);white-space:nowrap}
+.banner{margin:14px 0 0;padding:10px 14px;border-radius:10px;font-size:14px;border:1px solid}
+.banner.demo{background:#2a2110;border-color:#5b4614;color:#ffd892}
+.banner.cool{background:#10262a;border-color:#1f5560;color:#9ff0ff}
+nav{display:flex;gap:6px;margin:18px 0 14px;flex-wrap:wrap}
+nav button{background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:999px;font:inherit;cursor:pointer}
+nav button.on{color:var(--text);border-color:var(--blue);background:#132140}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;position:relative}
+.coinhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.sym{font-size:20px;font-weight:700}
+.nm{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.px{text-align:right;flex:none}
+.px .small{line-height:1.5}
+.px b{font-size:18px;display:inline-block;min-width:8ch}
+.mono,.px,.rung b,.bk b{font-variant-numeric:tabular-nums}
+.up{color:var(--green)}.dn{color:var(--red)}
+.mission{margin:12px 0;border-radius:12px;padding:12px;border:1px solid;height:196px;display:flex;flex-direction:column;overflow:hidden}
+.mission .btns{margin-top:auto;padding-top:8px}
+.mission .k{font-size:11px;letter-spacing:1.5px;font-weight:700;text-transform:uppercase}
+.mission .t{font-size:15px;margin-top:4px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.m-hold{background:#0f1f1a;border-color:#1f4a3a}.m-hold .k{color:var(--green)}
+.m-buy{background:#0f1f1a;border-color:#2f7a55}.m-buy .k{color:var(--green)}
+.m-trim{background:#2a1418;border-color:#6a2635}.m-trim .k{color:var(--red)}
+.m-stop{background:#2a1a0c;border-color:#6b4317}.m-stop .k{color:var(--amber)}
+.m-zone{background:#0d2228;border-color:#1f5560}.m-zone .k{color:var(--ice)}
+.m-wait{background:#171b26;border-color:var(--line)}.m-wait .k{color:var(--muted)}
+.why{font-size:12px;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button.b{font:inherit;font-size:13px;border-radius:9px;padding:7px 12px;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--text)}
+button.b.pri{background:var(--blue);border-color:var(--blue);color:#06121b;font-weight:600}
+button.b.go{background:var(--green);border-color:var(--green);color:#05150e;font-weight:600}
+button.b.warn{background:transparent;border-color:#6a2635;color:var(--red)}
+button.b:disabled{opacity:.45;cursor:default}
+.sect{font-size:11px;letter-spacing:1.4px;color:var(--muted);text-transform:uppercase;margin:12px 0 6px;display:flex;justify-content:space-between}
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:9px;padding:6px 8px;background:#0e1320;display:flex;gap:6px;align-items:flex-start}
+.chip .d{width:9px;height:9px;border-radius:50%;margin-top:4px;flex:none;background:#2d3650}
+.chip.on{border-color:#6a2635;background:#1e1016}.chip.on .d{background:var(--red);box-shadow:0 0 8px var(--red)}
+.chip.bon{border-color:#1f5560;background:#0c1d22}.chip.bon .d{background:var(--ice);box-shadow:0 0 8px var(--ice)}
+.chip small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:10.5px;margin-top:2px;min-height:2.6em}
+.chip.man{cursor:pointer}
+.chip.man:hover{border-color:#47557a}
+.meter{display:flex;gap:4px;margin-top:4px}
+.meter i{flex:1;height:6px;border-radius:3px;background:#222a40}
+.meter i.f{background:var(--red)}
+.rungs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.rung{border:1px solid var(--line);border-radius:9px;padding:6px;text-align:center;font-size:12px;background:#0e1320}
+.rung b{display:block;font-size:13px}
+.rung.hit{border-color:#24477a;background:#0e1a2c}
+.rung.done{border-color:#1f4a3a;background:#0f1f1a}
+.rung small{color:var(--muted)}
+.buckets{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:12px}
+.bk{background:#0e1320;border:1px solid var(--line);border-radius:9px;padding:6px 8px}
+.bk b{display:block;font-size:14px}
+.bk small{color:var(--muted)}
+svg.spark{width:100%;height:46px;display:block;margin-top:8px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:500;font-size:12px}
+input,select,textarea{font:inherit;background:#0c111d;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 9px;width:100%}
+label{font-size:12px;color:var(--muted);display:block;margin:8px 0 4px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.modal{position:fixed;inset:0;background:rgba(3,6,12,.75);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal.open{display:flex}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:520px;width:100%;padding:18px;max-height:90vh;overflow:auto}
+.modal h3{margin:0 0 8px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(30px);background:#1b2442;border:1px solid var(--violet);padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;z-index:60;font-weight:600}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.panic{position:fixed;right:18px;bottom:18px;z-index:40;background:#2a1418;border:1px solid #6a2635;color:#ffb3c1;border-radius:999px;padding:11px 16px;font:inherit;font-weight:600;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+.foot{margin-top:26px;font-size:12px;color:var(--muted);line-height:1.5}
+.pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.pill.lv{color:var(--green);border-color:#1f4a3a;background:#0f1f1a}
+pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.live i{width:8px;height:8px;border-radius:50%;background:#4a5470}
+.live.on{color:var(--green);border-color:#1f4a3a}.live.on i{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.6s infinite}
+.live.warn{color:var(--amber);border-color:#6b4317}.live.warn i{background:var(--amber)}
+@keyframes pulse{50%{opacity:.35}}
+.banner.stale{background:#2a1a0c;border-color:#6b4317;color:#ffd2a1}
+.modal .box.wide{max-width:980px}
+#chart{height:430px;margin-top:10px}
+.ivs{display:flex;gap:6px;flex-wrap:wrap}
+.ivs button.on{border-color:var(--blue);background:#132140}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.legend span:before{content:"";display:inline-block;width:14px;height:3px;margin-right:5px;vertical-align:middle;background:var(--c)}
+@media (max-width:520px){.player{min-width:0;width:100%}.xpbar{width:120px}.three{grid-template-columns:1fr 1fr}}
+</style>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><div class="logo">CC</div><div><h1>Crypto Coach</h1><div class="tag">Your rules, not your gut.</div></div></div>
+    <div class="player">
+      <div style="flex:1"><div class="lvl" id="lvlName">-</div><div class="xpbar"><i id="xpFill"></i></div><div class="small muted mono" id="xpText"></div></div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><div class="streak" id="streak"></div><div class="live" id="liveStatus"><i></i><span>offline</span></div></div>
+    </div>
+  </header>
+  <div id="banners"></div>
+  <nav id="tabs">
+    <button data-t="missions" class="on">🎯 Today</button>
+    <button data-t="orders">📋 Orders &amp; lots</button>
+    <button data-t="market">🌡 Market</button>
+    <button data-t="journal">📓 Journal</button>
+    <button data-t="backtest">🧪 Backtest</button>
+    <button data-t="setup">⚙️ Setup</button>
+  </nav>
+  <main id="view"></main>
+  <div class="foot" id="foot"></div>
+</div>
+<button class="panic" id="panicBtn">😰 I want to sell</button>
+<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const APP_VERSION = "5.3.0";
+const DEMO = /*DEMO*/null;
+const DEMO_CANDLES = /*DEMOC*/null;
+const KEY = "crypto_coach_v1";
+const FLAG_INFO = {
+  vertical:{n:"Vertical move",h:"Hundreds of % in days"},
+  stretched:{n:"Stretched",h:"Far above its averages"},
+  rsi:{n:"Extreme RSI",h:"Overbought"},
+  leverage:{n:"Leverage piling in",h:"Funding / open interest"},
+  news:{n:"News priced in",h:"Real catalyst, all in days",ov:true},
+  fomo:{n:"Social FOMO",h:"Trending + hype headlines",ov:true}
+};
+const BOTTOM_INFO = {freefall:"Freefall", stretched_down:"Stretched below", oversold:"Oversold RSI",
+  shorts_crowded:"Shorts crowded", capitulation:"Capitulation volume", near_200w:"Near 200-week avg"};
+const NBOTTOMS = Object.keys(BOTTOM_INFO).length;
+const LEVELS = [[0,"Paper Hands"],[150,"Rookie Stacker"],[400,"Ladder Climber"],[800,"Rule Follower"],[1400,"Steel Core"],[2200,"Cycle Rider"],[3200,"Diamond Discipline"]];
+
+let S = load();
+let DATA = null, IS_DEMO = false, TAB = "missions", FETCH_ERR = null, NEWSF = {coin:"all",tag:"all"};
+
+function blank(){return {xp:0,log:[],streak:{last:null,count:0,best:0},startedAt:Date.now(),lastOffPlan:null,
+  reserve:{total:0,alloc:{}},spent:{},coins:{},settings:{dataUrl:"signals.json",repoUrl:""},panic:null};}
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.coins)return Object.assign(blank(),s);}catch(e){}return blank();}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+function C(sym){if(!S.coins[sym])S.coins[sym]={core:0,trade:0,avgCost:0,recurring:""};return S.coins[sym];}
+
+/* ---------- formatting ---------- */
+const money=x=>x==null||isNaN(x)?"–":x===0?"$0":(Math.abs(x)>=1000?"$"+x.toLocaleString(undefined,{maximumFractionDigits:0}):Math.abs(x)>=1?"$"+x.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):"$"+x.toFixed(4));
+const qty=x=>x==null||isNaN(x)?"–":Math.abs(x)<1&&x!==0?(+x).toPrecision(4):(+x).toLocaleString(undefined,{maximumFractionDigits:x<10?4:2});
+const pc=x=>x==null?"–":(x>0?"+":"")+x.toFixed(1)+"%";
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const today=()=>new Date().toISOString().slice(0,10);
+
+/* ---------- game ---------- */
+function level(){let i=0;LEVELS.forEach((l,k)=>{if(S.xp>=l[0])i=k;});return i;}
+function addXP(n,text,coin,type){S.xp=Math.max(0,S.xp+n);S.log.unshift({ts:Date.now(),type:type||"info",coin:coin||"",text,xp:n});S.log=S.log.slice(0,300);
+  const before=level();save();toast((n>=0?"+":"")+n+" XP · "+text.split(/\.(\s|$)/)[0]);
+  if(level()>before)setTimeout(()=>toast("⬆️ Level up: "+LEVELS[level()][1]),1400);}
+function checkIn(){const t=today();if(S.streak.last===t)return false;
+  const y=new Date(Date.now()-864e5).toISOString().slice(0,10);
+  S.streak.count=S.streak.last===y?S.streak.count+1:1;S.streak.best=Math.max(S.streak.best,S.streak.count);S.streak.last=t;
+  addXP(10,"Daily check-in. Doing nothing on a no-signal day is a win.","","checkin");return true;}
+function toast(t){const el=document.getElementById("toast");el.textContent=t;el.classList.add("show");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("show"),2200);}
+
+/* ---------- flags ---------- */
+const NFLAGS=Object.keys(FLAG_INFO).length;
+function ovr(sym,k){const o=(C(sym).ovr||{})[k];return o&&Date.now()-o.ts<7*864e5?o:null;}
+function flagOn(c,k){const o=ovr(c.symbol,k);if(o)return o.v;return !!(c.flags&&c.flags[k]&&c.flags[k].on);}
+function flagsOn(c){return Object.keys(FLAG_INFO).filter(k=>flagOn(c,k));}
+function tierOf(n){return n<3?0:n===3?1:n<=5?2:3;}
+/* ---------- v5 plan: scheduled buys, 70/30 split, monthly lots, +20/+40 sells, -20/-40 buy-backs ---------- */
+const FEE=0.0025, TP=[20,40], BB=[20,40], MIN_ORDER=5, TINY=1e-12;
+function P(){S.plan=S.plan||{days:[1,15],core:70,amounts:{},bull:true};if(!S.plan.amounts)S.plan.amounts={};return S.plan;}
+function M(sym){const me=C(sym);
+  if(!me.v5){const old=(me.core||0)+(me.trade||0);me.v5={lots:[],sales:[],periods:{},snooze:{},nextId:1,migrated:old>0?old:0};
+    me.core=old;me.trade=0;save();}   // v4 holdings become Core: you were holding them, nothing is sold
+  return me.v5;}
+function ymdLocal(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+const fmtDate=t=>new Date(t).toLocaleDateString(undefined,{month:"short",day:"numeric"});
+function monthKey(ts){const d=new Date(ts==null?Date.now():ts);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}
+function lotName(l){const [y,m]=l.month.split("-");return new Date(+y,+m-1,1).toLocaleDateString(undefined,{month:"short",year:"2-digit"});}
+function planDays(){const ds=(P().days||[1,15]).map(x=>Math.min(28,Math.max(1,Math.round(+x)||0))).filter(x=>x>=1);return [...new Set(ds.length?ds:[1])].sort((a,b)=>a-b);}
+function periodStart(now){now=now||new Date();const ds=planDays(),d=now.getDate(),past=ds.filter(x=>x<=d);
+  return past.length?new Date(now.getFullYear(),now.getMonth(),past[past.length-1]):new Date(now.getFullYear(),now.getMonth()-1,ds[ds.length-1]);}
+function nextBuyDay(now){now=now||new Date();const ds=planDays(),fut=ds.filter(x=>x>now.getDate());
+  return fut.length?new Date(now.getFullYear(),now.getMonth(),fut[0]):new Date(now.getFullYear(),now.getMonth()+1,ds[0]);}
+function planAmt(sym){return +(P().amounts[sym]||0);}
+/* month rollover: buy-backs live until the month ends; unfilled ones are cancelled and their cash
+   joins the next 3 buy days at the new month's prices (all of it to Trade, since it was Trade money) */
+const ROLL_DAYS=3;
+function R(sym){const v=M(sym);v.roll=v.roll||{usd:0,left:0};return v.roll;}
+function rollExtra(sym){const r=R(sym);return r.usd>0.005&&r.left>0?r.usd/r.left:0;}
+function expiredSales(sym){const mk=monthKey();return M(sym).sales.filter(s=>monthKey(s.ts)<mk&&s.levels.some(x=>!x.done));}
+function buyDue(sym){return (planAmt(sym)>0||rollExtra(sym)>0)&&!M(sym).periods[ymdLocal(periodStart())];}
+
+/* trend: price vs the 200-day average, and whether that average is rising (watcher sends ma200 and ma200_prev, 20 days earlier) */
+function trend(c){const p=c.price,a=c.ma200,b=c.ma200_prev;
+  if(!a)return {k:"none",label:"Trend: not enough history"};
+  const up=b?a>b:null;
+  if(p>a&&up!==false)return {k:"bull",label:`🐂 Bull trend · above the 200-day average${up?" (rising)":""}`};
+  if(p<a&&up!==true)return {k:"bear",label:`🐻 Bear trend · below the 200-day average${up===false?" (falling)":""}`};
+  return {k:"side",label:"↔ Sideways · mixed signals around the 200-day average"};}
+
+/* lots: one per calendar month (until it first sells); each lot sells half at +20%, the rest at +40% */
+function lotPer(l){return l.q>TINY?l.cost/l.q:0;}
+function lotTP(l,k){return lotPer(l)*(1+TP[k]/100);}
+function addTrade(sym,q,usd,ts){if(q<=TINY)return null;const v=M(sym),mk=monthKey(ts);
+  let l=v.lots.find(x=>x.month===mk&&!x.sold&&!x.runner);
+  if(l){l.q+=q;l.cost+=usd;l.q0=l.q;l.done=[false,false];}
+  else{l={id:v.nextId++,month:mk,q,q0:q,cost:usd,done:[false,false],runner:false,sold:false};v.lots.push(l);}
+  return l;}
+function tradeQty(sym){return M(sym).lots.reduce((a,l)=>a+l.q,0);}
+function waitingUsd(sym){return M(sym).sales.reduce((a,s)=>a+s.levels.filter(x=>!x.done).reduce((b,x)=>b+x.usd,0),0)+R(sym).usd;}
+function okey(o){return o.kind+":"+(o.lot?o.lot.id+":"+o.k:o.sale.id+":"+o.i);}
+function openOrders(sym,c){const v=M(sym),out=[],bullNow=P().bull&&c&&trend(c).k==="bull";
+  for(const l of v.lots){
+    if(l.runner){out.push({kind:"runner",lot:l,k:2,price:lotPer(l)*2,q:l.q,label:`${lotName(l)} lot · runner +100%`});continue;}
+    const q1=l.done[0]?0:Math.min(l.q0/2,l.q);
+    if(!l.done[0])out.push({kind:"sell",lot:l,k:0,price:lotTP(l,0),q:q1,label:`${lotName(l)} lot · +${TP[0]}%`});
+    if(!l.done[1]){const rest=l.q-q1;out.push({kind:"sell",lot:l,k:1,price:lotTP(l,1),q:bullNow?rest/2:rest,bull:bullNow,
+      label:`${lotName(l)} lot · +${TP[1]}%${bullNow?" (bull: keep half)":""}`});}}
+  for(const s of v.sales)s.levels.forEach((x,i)=>{if(!x.done)out.push({kind:"buyback",sale:s,i,price:x.price,usd:x.usd,
+    label:`Buy back −${x.pct}% · from ${fmtDate(s.ts)} sale`});});
+  return out.sort((a,b)=>b.price-a.price);}
+
+function directive(c){const sym=c.symbol,v=M(sym),px=c.price,now=Date.now();
+  if(c.error)return {k:"wait",title:"⏸ Rules paused",text:`The watcher couldn't update ${sym}: ${c.error}`,why:"Showing its last good data."};
+  if(DATA&&!IS_DEMO&&ageMin()>360)return {k:"wait",title:"⏸ Data is stale",text:"The watcher hasn't published for 6+ hours, so prices may be old.",why:"Check GitHub → Actions."};
+  const sn=k=>v.snooze[k]&&now-v.snooze[k]<12*36e5, os=openOrders(sym,c);
+  const sell=os.filter(o=>o.kind!=="buyback"&&px>=o.price&&!sn(okey(o))).sort((a,b)=>a.price-b.price)[0];
+  if(sell)return {k:"trim",title:"🔴 SELL · take profit",act:"sell",o:sell,text:`Sell ${qty(sell.q)} ${sym} at ${money(sell.price)} · ${sell.label}.`,why:"This lot reached its target. Core is never sold."};
+  const run=v.lots.find(l=>l.runner&&c.ma50&&px<c.ma50&&!sn("runner:"+l.id+":2"));
+  if(run){const o={kind:"runner",lot:run,k:2,price:px,q:run.q,label:`${lotName(run)} lot · runner exit`,exit:true};
+    return {k:"trim",title:"🔴 SELL · runner exit",act:"sell",o,text:`Sell the ${qty(run.q)} ${sym} runner at market. The bull run is fading (price closed below its 50-day average).`,why:"Bull mode kept half of this lot for a bigger move. That move is over."};}
+  const bb=os.filter(o=>o.kind==="buyback"&&px<=o.price&&!sn(okey(o)))[0];
+  if(bb)return {k:"buy",title:"🟢 BUY BACK",act:"buyback",o:bb,text:`Buy back ${money(bb.usd)} of ${sym} at ${money(bb.price)} · ${bb.label}.`,why:"Half the money from that sale, 20% / 40% below the sale price."};
+  const ex=expiredSales(sym);
+  if(ex.length){const n=ex.reduce((a,s)=>a+s.levels.filter(x=>!x.done).length,0),usd=ex.reduce((a,s)=>a+s.levels.filter(x=>!x.done).reduce((b,x)=>b+x.usd,0),0);
+    return {k:"zone",title:"🧹 NEW MONTH · re-baseline",act:"roll",text:`Cancel your ${n} unfilled ${sym} buy-back order${n>1?"s":""} on Kraken. Its ${money(usd)} joins your next ${ROLL_DAYS} buy days at this month's prices.`,why:"Old buy-back prices may never come back. This keeps every dollar working off the current baseline."};}
+  if(!planAmt(sym)&&!v.lots.length&&!(C(sym).core>0)&&!rollExtra(sym))return {k:"wait",title:"👋 Not started",text:`Set how much to buy on each buy day for ${sym} in Setup.`,why:`Buy days: ${planDays().map(d=>d+(d===1?"st":d===2?"nd":d===3?"rd":"th")).join(" and ")} of the month.`};
+  if(buyDue(sym)){const a=planAmt(sym),cs=P().core/100,e=rollExtra(sym);
+    return {k:"buy",title:"🗓 BUY DAY",act:"buyday",text:`Buy ${money(a+e)} of ${sym}: ${money(a*cs)} to Core, ${money(a*(1-cs)+e)} to the ${lotName({month:monthKey()})} Trade lot${e?` (includes ${money(e)} rolled-over sale cash)`:""}.`,why:"Scheduled buy. Don't wait for a dip: over 10 years, timing didn't beat the schedule."};}
+  const nf=flagsOn(c).length;
+  if(nf>=3)return {k:"stop",title:"🟡 HEADS UP · overheated",text:`${nf} of ${NFLAGS} top flags are on. Check your sell orders are on Kraken. No extra buys beyond the schedule.`,why:"Context, not a trigger. Core is never sold."};
+  if((c.bottom_count||0)>=3)return {k:"zone",title:"🟡 HEADS UP · washed out",text:`${c.bottom_count} of ${NBOTTOMS} bottom signals are on. Stick to the schedule. Your buy-backs are waiting lower.`,why:"Context, not a trigger. This is when people panic-sell. Don't."};
+  const ns=os.filter(o=>o.kind!=="buyback").sort((a,b)=>a.price-b.price)[0],nb=os.find(o=>o.kind==="buyback");
+  return {k:"hold",title:"✅ HOLD",text:`Nothing to do.${ns?` Next sell ${money(ns.price)}.`:""}${nb?` Next buy-back ${money(nb.price)}.`:""} Next buy day ${fmtDate(nextBuyDay())}.`,why:trend(c).label};}
+
+/* ---------- render ---------- */
+function liveSpark(c){const v=(c.spark||[]).slice();if(c.live&&v.length)v[v.length-1]=c.price;return v;}
+function spark(vals,col){if(!vals||vals.length<2)return "";const mn=Math.min(...vals),mx=Math.max(...vals),w=300,h=46;
+  const pts=vals.map((v,i)=>[i/(vals.length-1)*w,h-3-(v-mn)/((mx-mn)||1)*(h-6)]);
+  const d=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d} L${w} ${h} L0 ${h}Z" fill="${col}" opacity=".08"/><path d="${d}" fill="none" stroke="${col}" stroke-width="1.6"/><circle cx="${pts[pts.length-1][0]-2}" cy="${pts[pts.length-1][1]}" r="2.6" fill="${col}"/></svg>`;}
+function weather(c){const nf=flagsOn(c).length,nb=c.bottom_count||0,t=trend(c);
+  return `<span class="pill" title="${esc(t.label)}">${t.k==="bull"?"🐂 Bull":t.k==="bear"?"🐻 Bear":t.k==="side"?"↔ Sideways":"– Trend"}</span>
+    <span class="pill" style="${nf>=3?"color:var(--red);border-color:#6a2635":""}" title="Top-warning flags">🌡 ${nf}/${NFLAGS} hot</span>
+    <span class="pill" style="${nb>=3?"color:var(--ice);border-color:#1f5560":""}" title="Bottom signals">🧊 ${nb}/${NBOTTOMS} washed out</span>`;}
+
+function renderMissions(){
+  if(!DATA){return FETCH_ERR?`<div class="card">Couldn't load signals from <span class="mono">${esc(S.settings.dataUrl)}</span> (${esc(FETCH_ERR)}). If you just set up GitHub, wait for the first watcher run to finish, then refresh.</div>`:`<div class="card">Loading signals…</div>`;}
+  const nb=nextBuyDay();
+  let h=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="muted small">Buy on schedule · ${P().core}% Core (never sold) · ${100-P().core}% Trade (sells +${TP[0]}/+${TP[1]}%, buy-backs −${BB[0]}/−${BB[1]}%) · next buy day <b>${fmtDate(nb)}</b></div>
+    <div class="row"><button class="b" onclick="addCoin()">＋ Add coin</button><button class="b go" onclick="doCheckIn()" ${S.streak.last===today()?"disabled":""}>✓ Daily check-in</button></div></div><div class="grid">`;
+  for(const c0 of DATA.coins){const c=eff(c0),sym=c.symbol,me=C(sym),v=M(sym),d=directive(c);
+    const col=(c.change_7d||0)>=0?"var(--green)":"var(--red)",tq=tradeQty(sym),w=waitingUsd(sym),val=(me.core+tq)*c.price+w;
+    h+=`<div class="card"><div class="coinhead"><div><div class="sym">${esc(sym)}</div><div class="nm">${esc(c.name)} · ${c.drawdown_pct!=null?pc(c.drawdown_pct)+" from 2y high":""}</div></div>
+      <div class="px"><b class="mono" id="px-${sym}">${money(c.price)}</b><div class="small mono"><span class="pill ${c.live?"lv":""}" id="src-${sym}">${c.live?"● live":"watcher"}</span> <br><span id="ch-${sym}" class="${c.change_24h>=0?"up":"dn"}">${pc(c.change_24h)} 24h</span> · <span class="${c.change_7d>=0?"up":"dn"}">${pc(c.change_7d)} 7d</span></div></div></div>
+      <div style="cursor:pointer" id="sp-${sym}" onclick="openChart('${sym}')" title="Open chart">${spark(liveSpark(c),col)}</div>
+      <div class="mission m-${d.k}" title="${esc(d.text+(d.why?"\n"+d.why:""))}"><div class="k">${esc(d.title)}</div><div class="t">${esc(d.text)}</div>${d.why?`<div class="why">${esc(d.why)}</div>`:""}
+      <div class="btns">${actionButtons(c,d)}</div></div>
+      <div class="buckets"><div class="bk"><small>🔒 Core</small><b class="mono">${qty(me.core)}</b><small>never sold</small></div>
+        <div class="bk"><small>🔁 Trade</small><b class="mono">${qty(tq)}</b><small>${v.lots.length} lot${v.lots.length===1?"":"s"}</small></div>
+        <div class="bk"><small>💵 Waiting</small><b class="mono">${money(w)}</b><small>for buy-backs</small></div></div>
+      <div class="row small" style="margin-top:8px;justify-content:space-between"><span class="muted">Total value</span><span class="mono">${money(val)}</span></div>
+      <div class="row" style="margin-top:8px;gap:6px;cursor:pointer" onclick="TAB='market';render()">${weather(c)}</div>
+    </div>`;}
+  return h+`</div>`;}
+
+function actionButtons(c,d){const s=c.symbol;
+  if(d.act==="sell")return `<button class="b pri" onclick="logSell('${s}')">I sold ✓</button><button class="b" onclick="notYet('${s}')">Not filled yet</button>`;
+  if(d.act==="buyback")return `<button class="b pri" onclick="logBuyBack('${s}')">I bought ✓</button><button class="b" onclick="notYet('${s}')">Not filled yet</button>`;
+  if(d.act==="roll")return `<button class="b pri" onclick="confirmRoll('${s}')">Done, cancelled ✓</button><button class="b" onclick="TAB='orders';render()">See orders</button>`;
+  if(d.act==="buyday")return `<button class="b go" onclick="logBuyDay('${s}',true)">I bought ✓</button><button class="b" onclick="skipBuyDay('${s}')">Skip this one</button>`;
+  return `<button class="b" onclick="logBuyDay('${s}',false)">Log a buy</button><button class="b" onclick="openChart('${s}')">📈 Chart</button>`;}
+
+function renderOrders(){if(!DATA)return `<div class="card">Loading…</div>`;
+  let h=`<div class="card" style="margin-bottom:14px"><b>Your orders on Kraken</b><p class="small muted" style="margin:4px 0 0">Place these as <b>limit orders</b> on Kraken Pro (good-till-cancelled). Kraken notifies you when one fills; then tap the mission and log it here. Never put a sell order on your Core coins.</p></div><div class="grid">`;
+  for(const c0 of DATA.coins){const c=eff(c0),sym=c.symbol,v=M(sym),os=openOrders(sym,c);
+    h+=`<div class="card"><div class="row" style="justify-content:space-between"><b class="sym">${sym}</b><span class="mono">${money(c.price)}</span></div>
+      <div class="sect"><span>Open orders</span><span class="mono">${os.length}</span></div>
+      ${os.length?`<table class="small">${os.map(o=>`<tr><td style="color:${o.kind==="buyback"?"var(--green)":"var(--red)"}">${o.kind==="buyback"?"BUY":"SELL"}</td><td>${esc(o.label)}</td><td class="mono">${money(o.price)}</td><td class="mono">${o.kind==="buyback"?money(o.usd):qty(o.q)+" "+sym}</td></tr>`).join("")}</table>`:`<div class="small muted">None yet. Orders appear after your first buy day.</div>`}
+      <div class="sect"><span>Trade lots</span><span class="mono">${qty(tradeQty(sym))} ${sym}</span></div>
+      ${v.lots.length?`<table class="small"><tr><th>Lot</th><th>Coins</th><th>Cost/coin</th><th>+${TP[0]}%</th><th>+${TP[1]}%</th></tr>${v.lots.map(l=>`<tr><td>${lotName(l)}${l.runner?" 🏃":""}</td><td class="mono">${qty(l.q)}</td><td class="mono">${money(lotPer(l))}</td>
+        <td class="mono ${l.done[0]?"muted":""}">${l.done[0]?"sold ✓":money(lotTP(l,0))}</td><td class="mono ${l.done[1]?"muted":""}">${l.runner?"runner":l.done[1]?"sold ✓":money(lotTP(l,1))}</td></tr>`).join("")}</table>`:`<div class="small muted">No Trade lots yet.</div>`}
+      ${R(sym).usd>0.005?`<div class="sect"><span>🔄 Rolled-over cash</span><span class="mono">${money(R(sym).usd)} over ${R(sym).left} buy day${R(sym).left===1?"":"s"}</span></div>`:""}
+      <div class="sect"><span>🔒 Core</span><span class="mono">${qty(C(sym).core)} ${sym}</span></div></div>`;}
+  return h+`</div>`;}
+
+function renderMarket(){if(!DATA)return `<div class="card">Loading…</div>`;
+  let h=`<div class="card" style="margin-bottom:14px"><b>Market read</b><p class="small muted" style="margin:4px 0 0">What's happening, not what will happen. These never trade by themselves; they explain the moves and help you stay calm. 3+ top flags = overheated, 3+ bottom signals = washed out.</p></div><div class="grid">`;
+  for(const c0 of DATA.coins){const c=eff(c0),nflags=flagsOn(c).length,t=trend(c);
+    h+=`<div class="card"><div class="row" style="justify-content:space-between"><b class="sym">${c.symbol}</b><span class="mono">${money(c.price)}</span></div>
+      <div class="small" style="margin-top:6px">${esc(t.label)}</div>
+      <div class="small muted mono" style="margin-top:4px">RSI ${c.rsi_daily??"–"} daily · ${c.rsi_weekly??"–"} weekly · ${c.drawdown_pct!=null?pc(c.drawdown_pct)+" from 2y high":""} · 200-day avg ${money(c.ma200)}</div>
+      <div class="sect"><span>Top-warning flags</span><span class="mono">${nflags}/${NFLAGS}</span></div>
+      <div class="meter">${[...Array(NFLAGS)].map((_,i)=>`<i class="${i<nflags?"f":""}"></i>`).join("")}</div>
+      <div class="chips" style="margin-top:8px">${Object.keys(FLAG_INFO).map(k=>{const f=(c.flags||{})[k],on=flagOn(c,k),o=ovr(c.symbol,k),info=FLAG_INFO[k];
+        const det=(f?f.detail:"no data yet")+(o?` · set ${o.v?"ON":"OFF"} by you (tap to change)`:(info.ov?" · tap to override":""));
+        return `<div class="chip ${on?"on":""} ${info.ov?"man":""}" ${info.ov?`onclick="cycleOverride('${c.symbol}','${k}')"`:""} title="${esc(det)}"><span class="d"></span><span>${info.n}<small>${esc(det)}</small></span></div>`}).join("")}</div>
+      <div class="sect"><span>Bottom signals</span><span class="mono">${c.bottom_count}/${NBOTTOMS}</span></div>
+      <div class="meter">${[...Array(NBOTTOMS)].map((_,i)=>`<i style="${i<c.bottom_count?"background:var(--ice)":""}"></i>`).join("")}</div>
+      <div class="chips" style="margin-top:8px">${Object.keys(c.bottoms||{}).map(k=>`<div class="chip ${c.bottoms[k].on?"bon":""}"><span class="d"></span><span>${BOTTOM_INFO[k]||k}<small>${esc(c.bottoms[k].detail)}</small></span></div>`).join("")}</div></div>`;}
+  return h+`</div><div style="margin-top:14px">${renderNews()}</div>`;}
+
+function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S.coins),p=P(),ds=planDays();
+  return `<div class="card"><b>Your plan</b><p class="small muted">Buy on these days every month. Each buy goes ${p.core}% to Core (never sold) and ${100-p.core}% to that month's Trade lot.</p>
+    ${DATA&&DATA.plan&&DATA.plan.days.join(",")!==ds.join(",")?`<div class="banner stale" style="margin:0 0 8px">Your phone's daily ping uses buy days <b>${DATA.plan.days.join(" and ")}</b> (from GitHub). To match these, add <span class="mono">"plan": {"days": [${ds.join(", ")}]}</span> to coins.json.</div>`:""}
+    <div class="three"><div><label>Buy day 1</label><input type="number" min="1" max="28" id="pd1" value="${ds[0]||1}"></div><div><label>Buy day 2 (blank = none)</label><input type="number" min="1" max="28" id="pd2" value="${ds[1]||""}"></div><div><label>Buy day 3 (blank = none)</label><input type="number" min="1" max="28" id="pd3" value="${ds[2]||""}"></div></div>
+    <div class="two"><div><label>Core share %</label><input type="number" min="0" max="100" id="pcore" value="${p.core}"></div><div><label>Bull mode</label><select id="pbull"><option value="1" ${p.bull?"selected":""}>On: in a bull trend, the +40% sell keeps half as a runner</option><option value="0" ${p.bull?"":"selected"}>Off</option></select></div></div>
+    <table style="margin-top:10px"><tr><th>Coin</th><th>$ per buy day</th><th>🔒 Core coins</th><th>Trade coins</th></tr>
+    ${syms.map(s=>{const m=C(s);M(s);return `<tr><td><b>${s}</b></td><td><input type="number" step="any" data-f="amt" data-s="${s}" value="${p.amounts[s]||""}"></td><td><input type="number" step="any" data-f="core" data-s="${s}" value="${m.core?+(+m.core).toPrecision(8):""}"></td><td class="mono">${qty(tradeQty(s))} <button class="b" onclick="addLot('${s}')">＋ lot</button></td></tr>`}).join("")}</table>
+    <p class="small muted">Already hold coins? Put them in Core if you're keeping them; use ＋ lot for coins you want the sell ladder to manage (enter what you paid). Your earlier holdings were moved to Core automatically.</p>
+    <div class="two"><div><label>Your GitHub repo URL (for "Add coin")</label><input id="repoUrl" placeholder="https://github.com/you/crypto-coach" value="${esc(S.settings.repoUrl||"")}"></div>
+    <div><label>Signals URL</label><input id="dataUrl" value="${esc(S.settings.dataUrl)}"></div></div>
+    <div class="btns"><button class="b pri" onclick="saveSetup()">Save</button></div></div>
+    <div class="card" style="margin-top:14px"><b>Backup</b><p class="small muted">Your plan, lots and journal live in this browser only. Copy a backup now and then; paste it to restore on another device.</p>
+    <div class="btns"><button class="b" onclick="copyBackup()">Copy backup</button><button class="b" onclick="restore()">Restore from backup</button><button class="b warn" onclick="wipe()">Reset everything</button></div></div>`;}
+
+function render(){renderHeader();const v=document.getElementById("view");
+  v.innerHTML=TAB==="missions"?renderMissions():TAB==="orders"?renderOrders():TAB==="market"?renderMarket():TAB==="journal"?renderJournal():TAB==="backtest"?renderBacktest():renderSetup();
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB));}
+
+/* ---------- logging ---------- */
+function curO(sym){return directive(eff(coinData(sym)));}
+function logBuyDay(sym,scheduled){const c=eff(coinData(sym)),e=scheduled?rollExtra(sym):0,a=(planAmt(sym)+e)||"",cs=P().core;
+  modal(`<h3>${scheduled?"Buy day":"Log a buy"} · ${sym}</h3><p class="small muted">${cs}% goes to Core (never sold), ${100-cs}% to the ${lotName({month:monthKey()})} Trade lot.</p>
+  <div class="two"><div><label>Spent ($)</label><input type="number" step="any" id="mAmt" value="${a}"></div><div><label>Price paid</label><input type="number" step="any" id="mPx" value="${(+c.price).toPrecision(6)}"></div></div>
+  <div class="btns"><button class="b pri" onclick="confirmBuyDay('${sym}',${scheduled})">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function confirmBuyDay(sym,scheduled){const amt=+document.getElementById("mAmt").value,px=+document.getElementById("mPx").value;
+  if(!(amt>0&&px>0))return toast("Enter what you spent and the price");
+  const me=C(sym),v=M(sym),cs=P().core/100,q=amt*(1-FEE)/px;
+  // rolled-over sale cash (scheduled buys only) goes 100% to Trade; the rest splits Core / Trade
+  const r=R(sym),e=scheduled?Math.min(rollExtra(sym),amt):0,base=amt-e,coreUsd=base*cs,tradeUsd=amt-coreUsd;
+  me.core+=coreUsd*(1-FEE)/px;addTrade(sym,tradeUsd*(1-FEE)/px,tradeUsd);
+  if(e>0){r.usd=Math.max(0,r.usd-e);r.left=Math.max(0,r.left-1);if(r.usd<0.005){r.usd=0;r.left=0;}}
+  if(scheduled)v.periods[ymdLocal(periodStart())]="bought";
+  closeModal();addXP(15,`Bought ${money(amt)} of ${sym} at ${money(px)}: ${qty(coreUsd*(1-FEE)/px)} to Core, ${qty(tradeUsd*(1-FEE)/px)} to Trade${e>0?` (incl. ${money(e)} rolled-over cash)`:""}.`,sym,"buy");render();}
+function confirmRoll(sym){const v=M(sym),r=R(sym);let usd=0;
+  for(const s of expiredSales(sym))for(const x of s.levels)if(!x.done){usd+=x.usd;x.done=true;x.expired=true;}
+  v.sales=v.sales.filter(s=>s.levels.some(x=>!x.done));r.usd+=usd;r.left=ROLL_DAYS;save();
+  addXP(10,`Re-baselined ${sym}: ${money(usd)} of old buy-back cash joins the next ${ROLL_DAYS} buy days.`,sym,"roll");render();}
+function skipBuyDay(sym){M(sym).periods[ymdLocal(periodStart())]="skipped";addXP(5,`Skipped a buy day on ${sym}. Honest logging still counts.`,sym,"skip");render();}
+function notYet(sym){const d=curO(sym);if(!d.o)return;M(sym).snooze[okey(d.o)]=Date.now();save();toast("OK. I'll ask again in 12 hours. Your limit order is still working.");render();}
+function logSell(sym){const d=curO(sym);if(d.act!=="sell")return;const o=d.o;
+  modal(`<h3>Sold · ${sym}</h3><p class="small muted">${esc(o.label)}. Enter what actually filled on Kraken.</p>
+  <div class="two"><div><label>Coins sold</label><input type="number" step="any" id="mQ" value="${(+o.q).toPrecision(6)}"></div><div><label>Price</label><input type="number" step="any" id="mPx" value="${(+o.price).toPrecision(6)}"></div></div>
+  <div class="btns"><button class="b pri" onclick="confirmSell('${sym}')">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function applySell(sym,o,q,px,ts){const me=C(sym),v=M(sym),l=o.lot;q=Math.min(q,l.q);if(q<=TINY)return null;
+  const per=lotPer(l),got=q*px*(1-FEE);l.q-=q;l.cost-=per*q;l.sold=true;
+  if(o.kind==="runner"){l.runner=false;l.done=[true,true];}
+  else{l.done[o.k]=true;if(o.k===1&&o.bull&&l.q>TINY)l.runner=true;}
+  const levels=got/BB.length<MIN_ORDER?[{pct:BB[0],price:px*(1-BB[0]/100),usd:got,done:false}]
+    :BB.map(p=>({pct:p,price:px*(1-p/100),usd:got/BB.length,done:false}));
+  const sale={id:v.nextId++,lot:l.id,ts:ts||Date.now(),q,price:px,got,levels,rebought:0,swept:0};v.sales.push(sale);
+  v.lots=v.lots.filter(x=>{if(x.q<=TINY)return false;if(x.done[0]&&x.done[1]&&!x.runner){me.core+=x.q;return false;}return true;});
+  save();return sale;}
+function confirmSell(sym){const d=curO(sym);if(d.act!=="sell")return closeModal();const q=+document.getElementById("mQ").value,px=+document.getElementById("mPx").value;
+  if(!(q>0&&px>0))return toast("Enter coins sold and price");const s=applySell(sym,d.o,q,px);closeModal();
+  if(s)addXP(60,`Took profit: sold ${qty(s.q)} ${sym} at ${money(px)} for ${money(s.got)}. Buy-backs set at ${s.levels.map(x=>money(x.price)).join(" and ")}.`,sym,"sell");render();}
+function logBuyBack(sym){const d=curO(sym);if(d.act!=="buyback")return;const o=d.o;
+  modal(`<h3>Bought back · ${sym}</h3><p class="small muted">${esc(o.label)}. Any coins beyond what you sold go to Core.</p>
+  <div class="two"><div><label>Spent ($)</label><input type="number" step="any" id="mAmt" value="${(+o.usd).toFixed(2)}"></div><div><label>Price</label><input type="number" step="any" id="mPx" value="${(+o.price).toPrecision(6)}"></div></div>
+  <div class="btns"><button class="b pri" onclick="confirmBuyBack('${sym}')">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function applyBuyBack(sym,o,usd,px){const me=C(sym),v=M(sym),s=o.sale,lv=s.levels[o.i];
+  const q=usd*(1-FEE)/px;lv.done=true;s.rebought+=q;
+  const extra=Math.max(0,Math.min(q,s.rebought-s.q-s.swept));s.swept+=extra;me.core+=extra;
+  addTrade(sym,q-extra,usd*(q-extra)/q);v.sales=v.sales.filter(x=>x.levels.some(y=>!y.done));save();return {q,extra};}
+function confirmBuyBack(sym){const d=curO(sym);if(d.act!=="buyback")return closeModal();const usd=+document.getElementById("mAmt").value,px=+document.getElementById("mPx").value;
+  if(!(usd>0&&px>0))return toast("Enter what you spent and the price");const r=applyBuyBack(sym,d.o,usd,px);closeModal();
+  addXP(50,`Bought back ${qty(r.q)} ${sym} at ${money(px)}.${r.extra>0?` 🎉 ${qty(r.extra)} extra coins moved to Core.`:""}`,sym,"buyback");render();}
+function addLot(sym){modal(`<h3>Add an existing Trade lot · ${sym}</h3><p class="small muted">For coins you already hold and want the sell ladder (+${TP[0]}% / +${TP[1]}%) to manage.</p>
+  <div class="three"><div><label>Coins</label><input type="number" step="any" id="lQ"></div><div><label>Paid per coin ($)</label><input type="number" step="any" id="lPx"></div><div><label>Month bought</label><input type="month" id="lM" value="${monthKey()}"></div></div>
+  <div class="btns"><button class="b pri" onclick="confirmLot('${sym}')">Add lot</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function confirmLot(sym){const q=+document.getElementById("lQ").value,px=+document.getElementById("lPx").value,m=document.getElementById("lM").value||monthKey();
+  if(!(q>0&&px>0))return toast("Enter coins and price");const [y,mo]=m.split("-");addTrade(sym,q,q*px,new Date(+y,+mo-1,15).getTime());save();closeModal();toast("Lot added");render();}
+function saveSetup(){const p=P();p.days=["pd1","pd2","pd3"].map(id=>parseInt(document.getElementById(id).value)).filter(x=>x>=1&&x<=28);if(!p.days.length)p.days=[1];
+  p.core=Math.min(100,Math.max(0,parseFloat(document.getElementById("pcore").value)||70));p.bull=document.getElementById("pbull").value==="1";
+  document.querySelectorAll("[data-f]").forEach(i=>{const v=parseFloat(i.value)||0,s=i.dataset.s;if(i.dataset.f==="amt")p.amounts[s]=v;else C(s)[i.dataset.f]=v;});
+  S.settings.repoUrl=document.getElementById("repoUrl").value.trim();
+  const du=document.getElementById("dataUrl").value.trim()||"signals.json";const changed=du!==S.settings.dataUrl;S.settings.dataUrl=du;save();toast("Saved");if(changed)fetchData();else render();}
+
+
+
+
+function renderHeader(){const L=level(),cur=LEVELS[L][0],nxt=LEVELS[L+1]?LEVELS[L+1][0]:cur+1000;
+  document.getElementById("lvlName").textContent=`Lv ${L+1} · ${LEVELS[L][1]}`;
+  document.getElementById("xpFill").style.width=Math.min(100,(S.xp-cur)/(nxt-cur)*100)+"%";
+  document.getElementById("xpText").textContent=`${S.xp} XP · next level at ${nxt}`;
+  document.getElementById("streak").textContent=`🔥 ${S.streak.count} day streak`;
+  let b="";
+  if(IS_DEMO)b+=`<div class="banner demo">Demo mode: these are illustrative numbers, not live prices. Once your GitHub watcher runs, this app shows real signals.</div>`;
+  if(S.panic&&S.panic.until){const left=S.panic.until-Date.now();
+    b+=left>0?`<div class="banner cool">🧊 Cooldown running: ${Math.ceil(left/36e5)}h left. Your rules still apply. Check back after.</div>`
+             :`<div class="banner cool">🧊 Cooldown finished. Still want to sell? If not: <button class="b go" onclick="heldLine()">I held the line (+100 XP)</button></div>`;}
+  if(DATA&&!IS_DEMO&&ageMin()>75)b+=`<div class="banner stale">⚠️ Watcher signals are ${Math.round(ageMin())} minutes old (normally under 20). Flags may be out of date. Check GitHub → Actions.</div>`;
+  if(DATA&&!IS_DEMO&&DATA.version!==APP_VERSION)b+=`<div class="banner stale">⚠️ Version mismatch: this app is v${APP_VERSION} but the watcher is ${DATA.version?"v"+esc(DATA.version):"an older version"}. One of the files wasn't uploaded, or the watcher hasn't run since. Check GitHub → Actions; if it's green, re-upload the whole set.</div>`;
+  const mm=DATA?DATA.coins.filter(c=>LIVE.mismatch[c.symbol]).map(c=>c.symbol):[];
+  if(mm.length)b+=`<div class="banner stale">⚠️ Live price for ${mm.join(", ")} disagrees with the watcher by more than 25%, so the app is ignoring the live price for rules. Check the coin's "kraken"/"ws" names in coins.json.</div>`;
+  document.getElementById("banners").innerHTML=b;
+  document.getElementById("foot").innerHTML=DATA?`Crypto Coach app v${APP_VERSION} · watcher ${DATA.version?"v"+esc(DATA.version):"(old)"} · Data: ${esc(DATA.source||"")} · signals updated ${new Date(DATA.generated_at).toLocaleString()}${IS_DEMO?"":" ("+Math.round(ageMin())+" min ago)"} · live prices: Kraken WebSocket. These are rule-based signals, not predictions or financial advice. Your plan: scheduled buys, Core never sold, Trade lots sell at +20/+40% and buy back at −20/−40%. Flags and signals are context, not triggers.`:"";}
+
+
+
+
+function ago(ts){const m=Math.max(0,(Date.now()/1000-ts)/60);return m<60?Math.round(m)+"m":m<1440?Math.round(m/60)+"h":Math.round(m/1440)+"d";}
+const TAGC={catalyst:"var(--blue)",hype:"var(--amber)",risk:"var(--red)",macro:"var(--violet)",official:"var(--green)"};
+function bars(daily){if(!daily||!daily.length)return "";const mx=Math.max(1,...daily.map(d=>d[1])),w=280,h=40,bw=w/daily.length;
+  return `<svg viewBox="0 0 ${w} ${h+12}" style="width:100%;height:52px">${daily.map((d,i)=>`<rect x="${i*bw+1}" y="${h-d[1]/mx*h}" width="${bw-2}" height="${Math.max(d[1]/mx*h,1)}" rx="2" fill="${i>=daily.length-3?"var(--amber)":"#3a4668"}"><title>${d[0]}: ${d[1]}</title></rect>`).join("")}<text x="0" y="${h+11}" font-size="9" fill="#8a96b0">${daily[0][0].slice(5)}</text><text x="${w}" y="${h+11}" font-size="9" fill="#8a96b0" text-anchor="end">today</text></svg>`;}
+function renderNews(){if(!DATA)return `<div class="card">Loading…</div>`;const N=DATA.news;
+  if(!N)return `<div class="card muted">No news data yet. It appears after the next watcher run.</div>`;
+  const src=(N.sources||[]).map(x=>`<span class="pill" style="${x.ok?"":"color:var(--red);border-color:#6a2635"}" title="${esc(x.error||x.items+" items")}">${x.ok?"✓":"✗"} ${esc(x.name)}</span>`).join(" ");
+  const tr=N.trending||{};
+  let h=`<div class="card"><div class="row" style="justify-content:space-between"><b>Hype meter</b><span class="small muted">Amber bars = last 3 days. Mentions are counted from the fixed outlets below.</span></div>
+    <div class="grid" style="margin-top:10px">${DATA.coins.filter(c=>c.news).map(c=>{const m=c.news;
+      return `<div class="bk" style="padding:10px"><div class="row" style="justify-content:space-between"><b>${esc(c.symbol)}</b><span class="small mono">${m.spike_ratio!=null?m.spike_ratio+"× normal":"baseline "+m.baseline_days+"/7 days"}</span></div>
+      ${bars(m.daily14)}
+      <div class="small muted">${m.mentions_3d} mentions in 3 days${m.baseline_per_day!=null?` · normal ${(+m.baseline_per_day).toFixed(1)}/day`:""} · ${m.catalysts_7d} catalyst · ${m.hype_3d} hype · ${m.trending_rank?"#"+m.trending_rank+" trending":"not trending"}</div>
+      <div class="small" style="margin-top:4px"><span class="${flagOn(c,"news")?"dn":"muted"}">● News priced in</span> &nbsp; <span class="${flagOn(c,"fomo")?"dn":"muted"}">● Social FOMO</span></div></div>`}).join("")}</div>
+    <div class="small muted" style="margin-top:10px">Sources: ${src}<br>CoinGecko trending: ${tr.ok?((tr.ids||[]).slice(0,15).map(esc).join(", ")||"empty"):"unavailable this run"}${tr.note?" ("+esc(tr.note)+")":""}</div></div>`;
+  const coins=["all","market"].concat(DATA.coins.map(c=>c.symbol)),tags=["all","catalyst","hype","risk","macro","official"];
+  h+=`<div class="row" style="margin:14px 0 8px">${coins.map(k=>`<button class="b ${NEWSF.coin===k?"pri":""}" onclick="NEWSF.coin='${k}';render()">${k==="all"?"All coins":k==="market"?"Market":k}</button>`).join("")}</div>
+    <div class="row" style="margin-bottom:10px">${tags.map(k=>`<button class="b ${NEWSF.tag===k?"pri":""}" onclick="NEWSF.tag='${k}';render()">${k==="all"?"All tags":k}</button>`).join("")}</div>`;
+  const items=(N.items||[]).filter(i=>(NEWSF.coin==="all"||(NEWSF.coin==="market"?!i.coins.length:i.coins.includes(NEWSF.coin)))&&(NEWSF.tag==="all"||i.tags.includes(NEWSF.tag))).slice(0,150);
+  h+=`<div class="card">${items.length?`<table>${items.map(i=>`<tr><td class="small muted mono" style="white-space:nowrap">${ago(i.ts)}</td><td><a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a>
+      <div class="small muted">${esc(i.source)} ${i.coins.map(x=>`<span class="pill">${esc(x)}</span>`).join(" ")} ${i.tags.map(t=>`<span class="pill" style="color:${TAGC[t]||"inherit"}">${t}</span>`).join(" ")}</div></td></tr>`).join("")}</table>`:`<div class="muted">No headlines match this filter in the last 7 days.</div>`}</div>
+    <p class="small muted">Headlines are matched to coins by fixed keywords and tagged by fixed word lists. No AI. A tag can occasionally be wrong; flags always show what triggered them.</p>`;
+  return h;}
+
+const XP_HELP=`<div class="card" style="margin-bottom:14px"><b>How XP works</b><p class="small muted">+10 daily check-in · +15 buy-day buy · +60 taking profit on a Trade lot · +50 buying back · +10 re-baselining at the new month · +100 finishing a 24h cooldown instead of panic-selling · +5 honestly logging a skip · −30 off-plan trade (and your streak resets). XP rewards following your plan, not profit.</p></div>`;
+let BT=null,BT_ERR=null;
+let ST=null,ST_ERR=null;
+async function loadStress(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,"");const r=await fetch(base+"stress.json?t="+Date.now(),{cache:"no-store"});
+  if(!r.ok)throw new Error("HTTP "+r.status);ST=await r.json();ST_ERR=null;}catch(e){ST_ERR=String(e.message||e);}if(TAB==="backtest")render();}
+function vLabel(k){const m=Object.fromEntries(k.split(" ").map(x=>x.split("=")));
+  return `${m.lots==="buy"?"Each buy its own lot":m.lots==="month"?"One lot per month":"One average"} · ${m.core}% core${m.bull==="on"?" · bull mode":""}${m.stale==="on"?" · 120-day rule":""}`;}
+const sp=x=>x==null?"—":`<span class="${x>=0?"up":"dn"}">${pc(x)}</span>`;
+function renderMyPlan(){const MP=ST&&ST.my_plan;if(!MP||!MP.coins||!Object.keys(MP.coins).length)return "";
+  const rows=Object.entries(MP.coins).map(([k,r])=>{const diff=r.value/r.dca_value-1;return `<tr><td><b>${k}</b><div class="small muted">${r.from} → ${r.to}</div></td>
+    <td class="mono">${money(r.invested)}<div class="small muted">${r.buy_days} buy days</div></td>
+    <td class="mono">${qty(r.coins)} ${k}<div class="small muted">🔒 ${qty(r.core)} core · 🔁 ${qty(r.trade)} trade</div></td>
+    <td class="mono">${money(r.cash)}</td>
+    <td class="mono"><b>${money(r.value)}</b><div class="small ${r.value>=r.invested?"up":"dn"}">${pc((r.value/r.invested-1)*100)} on money in</div></td>
+    <td class="mono">${money(r.dca_value)}<div class="small muted">${qty(r.dca_coins)} ${k}</div></td>
+    <td class="mono ${diff>=0?"up":"dn"}">${pc(diff*100)}</td>
+    <td class="mono small">${r.sells} sells · ${r.buybacks} buy-backs<div class="muted">${qty(r.coins_to_core_from_trades)} ${k} won into Core</div></td></tr>`}).join("");
+  const T=MP.total;
+  return `<div class="card" style="margin-top:14px;border-color:#2f7a55"><b>💡 Your plan, replayed on real prices</b> <span class="small muted">· $${MP.amount} per coin on the ${MP.days.map(d=>d+(d===1?"st":d===2?"nd":d===3?"rd":"th")).join(" and ")} · ${MP.core_pct}% Core · Trade lots +20/+40%, buy-backs −20/−40%, monthly re-baseline, bull mode · real fees</span>
+    <table style="margin-top:8px"><tr><th>Coin</th><th>Put in</th><th>Coins now</th><th>Cash waiting</th><th>Value today</th><th>Plain buying instead</th><th>Plan vs plain</th><th>Trading</th></tr>${rows}
+    ${T?`<tr><td><b>Total</b></td><td class="mono"><b>${money(T.invested)}</b></td><td></td><td class="mono">${money(T.cash)}</td><td class="mono"><b>${money(T.value)}</b></td><td class="mono">${money(T.dca_value)}</td><td></td><td></td></tr>`:""}</table>
+    <div class="small muted" style="margin-top:6px">Value today = coins × today's price + cash waiting. Past results don't predict future ones. SOL history on Coinbase starts in mid-2021, so it gets a shorter run.</div></div>
+    ${renderBuyInCompare(MP)}`;}
+function renderBuyInCompare(MP){const has=Object.values(MP.coins).some(r=>r.pivot_wait);if(!has)return "";
+  const row=(name,coins,cash,value,base,sym)=>`<tr><td>${name}</td><td class="mono">${qty(coins)} ${sym}</td><td class="mono">${money(cash)}</td><td class="mono"><b>${money(value)}</b></td><td class="mono ${value>=base?"up":"dn"}">${value===base?"—":pc((value/base-1)*100)}</td></tr>`;
+  return `<div class="card" style="margin-top:14px"><b>Same $${MP.amount} deposits, different ways to buy</b>
+    <p class="small muted" style="margin:4px 0 8px">Money arrives on the ${MP.days.map(d=>d+(d===1?"st":d===2?"nd":d===3?"rd":"th")).join(" and ")}. <b>S1/S2</b> = it waits as two limit orders, half at the monthly pivot S1 and half at S2 (from last month's high, low and close, like TradingView's "Pivots Traditional"), then is held. <b>Wait</b>: unfilled money moves to the new month's S1/S2. <b>Wait, then buy</b>: anything unfilled when a new month starts is bought at market.</p>
+    <table><tr><th>How you buy</th><th>Coins now</th><th>Cash waiting</th><th>Value today</th><th>vs Buy + hold</th></tr>
+    ${Object.entries(MP.coins).map(([k,r])=>{const b=r.dca_value;return `<tr><td colspan="5" style="padding-top:14px;font-size:13px"><b style="font-size:15px">${k}</b> <span class="muted">· ${money(r.invested)} put in · ${r.from} → ${r.to}</span></td></tr>`
+      +row("Buy + hold (buy the day money arrives)",r.dca_coins,0,b,b,k)
+      +row("Your plan (70% Core / 30% Trade)",r.coins,r.cash,r.value,b,k)
+      +(r.pivot_wait?row(`S1/S2 + hold · wait <span class="muted small">(${r.pivot_wait.limit_fills} fills)</span>`,r.pivot_wait.coins,r.pivot_wait.cash,r.pivot_wait.value,b,k):"")
+      +(r.pivot_fallback?row(`S1/S2 + hold · wait, then buy <span class="muted small">(${r.pivot_fallback.limit_fills} fills, ${r.pivot_fallback.market_buys} at market)</span>`,r.pivot_fallback.coins,r.pivot_fallback.cash,r.pivot_fallback.value,b,k):"");}).join("")}</table></div>`;}
+function renderStress(){if(!ST&&!ST_ERR){loadStress();return `<div class="card" style="margin-top:14px">Loading stress test…</div>`;}
+  if(!ST)return `<div class="card muted" style="margin-top:14px">No stress test published yet (${esc(ST_ERR)}). It runs once a day on GitHub.</div>`;
+  const A=ST.assumptions||{},O=ST.overall||[],D=ST.deep||{};
+  let h=`<div class="card" style="margin-top:14px"><b>🧪 Stress test: the v5 rules on up to 10 years of prices</b> <span class="small muted">· calculated ${new Date(ST.generated_at).toLocaleString()} · v${esc(ST.version)} · ${ST.seconds}s</span>
+    <p class="small muted" style="margin:6px 0 8px">${esc(A.money)}. ${esc(A.limits)}. Fees: ${esc(A.fees)}. Fills: ${esc(A.fills)}. Windows: ${esc(A.windows)}.<br>
+    <b>Cash-matched DCA</b> = ${esc(A.cash_matched)}. <b>Tax</b> = ${esc(A.tax)}.</p>
+    <p class="small" style="margin:0 0 8px">How to read it: a rule set is only worth using if it beats <b>cash-matched DCA</b> in most windows (not just plain DCA), holds up in <b>bull</b> windows, and its <b>bad case</b> (the worst 10% of windows) is something you can live with.</p>
+    <table><tr><th>Rules</th><th>Windows</th><th>Beat DCA</th><th>Beat cash-matched DCA</th><th>Median vs DCA</th><th>Bad case (10%)</th><th>Bull windows</th><th>Bear windows</th><th>After tax</th><th>Trades / month</th><th>Cash held</th></tr>
+    ${O.slice(0,12).map((r,i)=>`<tr style="${i===0?"background:#0f1f1a":""}"><td>${vLabel(r.variant)}${i===0?" 🏆":""}</td><td class="mono">${r.windows}</td><td class="mono">${r.beat_dca_pct}%</td><td class="mono"><b>${r.beat_cash_matched_pct}%</b></td>
+      <td class="mono">${sp(r.median_vs_dca_pct)}</td><td class="mono">${sp(r.p10_vs_dca_pct)}</td><td class="mono">${sp(r.bull_median_vs_dca_pct)} <span class="muted small">(${r.bull_windows})</span></td>
+      <td class="mono">${sp(r.bear_median_vs_dca_pct)} <span class="muted small">(${r.bear_windows})</span></td><td class="mono">${sp(r.after_tax_median_vs_dca_pct)}</td><td class="mono">${r.trades_per_month}</td><td class="mono">${r.cash_share_pct}%</td></tr>`).join("")}</table>
+    <details style="margin-top:6px"><summary class="small">All ${O.length} rule sets</summary><table>${O.map(r=>`<tr><td class="small">${vLabel(r.variant)}</td><td class="mono small">${r.beat_cash_matched_pct}%</td><td class="mono small">${sp(r.median_vs_dca_pct)}</td><td class="mono small">${sp(r.p10_vs_dca_pct)}</td><td class="mono small">${sp(r.bull_median_vs_dca_pct)}</td><td class="mono small">${sp(r.after_tax_median_vs_dca_pct)}</td></tr>`).join("")}</table></details></div>`;
+  h+=`<div class="card" style="margin-top:14px"><b>Is it skill or luck?</b>
+    <p class="small muted" style="margin:4px 0 8px">Random timing: ${esc(A.random)}. Bootstrap: ${esc(A.bootstrap)}. A real edge should beat random timing well over half the time, and win on most synthetic paths.</p>
+    <table><tr><th>Rules</th><th>Beat random timing</th><th>Synthetic paths beating DCA</th><th>Bad path (10%)</th><th>Typical path</th><th>Good path (90%)</th></tr>
+    ${Object.entries(D).map(([k,r])=>`<tr><td>${vLabel(k)}</td><td class="mono">${r.beat_random_timing_pct}%</td><td class="mono">${r.bootstrap_beat_dca_pct}% <span class="muted small">of ${r.bootstrap_paths}</span></td><td class="mono">${sp(r.bootstrap_p10_vs_dca_pct)}</td><td class="mono">${sp(r.bootstrap_median_vs_dca_pct)}</td><td class="mono">${sp(r.bootstrap_p90_vs_dca_pct)}</td></tr>`).join("")}</table></div>`;
+  const SE=ST.sensitivity||{};
+  h+=`<div class="card" style="margin-top:14px"><b>Do nearby settings hold up?</b> <span class="small muted">· using ${vLabel(SE.variant||"")}</span>
+    <p class="small muted" style="margin:4px 0 8px">If only one exact setting works, it's probably fitted to the past. Good rules stay decent when you nudge them.</p>
+    <table><tr><th>Setting</th><th>Beat cash-matched DCA</th><th>Median vs DCA</th><th>Bad case</th><th>Bull windows</th><th>After tax</th><th>Trades / month</th></tr>
+    ${(SE.tests||[]).map(r=>`<tr><td>${esc(r.test)}</td><td class="mono">${r.beat_cash_matched_pct}%</td><td class="mono">${sp(r.median_vs_dca_pct)}</td><td class="mono">${sp(r.p10_vs_dca_pct)}</td><td class="mono">${sp(r.bull_median_vs_dca_pct)}</td><td class="mono">${sp(r.after_tax_median_vs_dca_pct)}</td><td class="mono">${r.trades_per_month}</td></tr>`).join("")}</table></div>`;
+  for(const c of ST.coins||[]){
+    if(c.error){h+=`<div class="card" style="margin-top:14px"><b>${esc(c.symbol)}</b> <span class="muted small">skipped: ${esc(c.error)}</span></div>`;continue;}
+    const V=c.variants||{},best=O.length?V[O[0].variant]:null,ex=c.example;
+    h+=`<div class="card" style="margin-top:14px"><b style="font-size:18px">${esc(c.symbol)}</b> <span class="small muted">· ${esc(c.data.source)} · ${esc(c.data.from||"")} → ${esc(c.data.to||"")} · ${c.windows} windows${c.data.gaps_skipped?` · history before a ${c.data.gaps_skipped}-gap skipped`:""}</span>
+      ${best?`<div class="small" style="margin-top:6px">${vLabel(O[0].variant)}: beat DCA in <b>${best.beat_dca_pct}%</b> of windows, cash-matched DCA in <b>${best.beat_cash_matched_pct}%</b> · median ${sp(best.median_vs_dca_pct)} · bad case ${sp(best.p10_vs_dca_pct)} · bull ${sp(best.bull_median_vs_dca_pct)} (${best.bull_windows}) · bear ${sp(best.bear_median_vs_dca_pct)} (${best.bear_windows})</div>`:""}
+      ${ex?`<details style="margin-top:6px"><summary class="small">Every trade in the latest window (${ex.start} → ${ex.end}): ${qty(ex.score)} vs DCA ${qty(ex.dca)} coins, core ${qty(ex.core)}, ${money(ex.waiting)} waiting, est. tax ${money(ex.tax)}</summary><table>${ex.events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")}</table></details>`:""}</div>`;}
+  return h;}
+async function loadBacktest(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,"");const r=await fetch(base+"backtest.json?t="+Date.now(),{cache:"no-store"});
+  if(!r.ok)throw new Error("HTTP "+r.status);BT=await r.json();BT_ERR=null;}catch(e){BT_ERR=String(e.message||e);}if(TAB==="backtest")render();}
+const BT_NAMES={app:"Crypto Coach (as built)",ladder_only:"Ladder only (no buy-early)",reanchor:"Ladder moves after trims",hybrid:"Half monthly + half deep ladder",
+  rise:"Rise ladder: take-profits +25/50/75/100%",rise_flags:"Rise ladder + sell early when overheated",
+  yours_10_20:"Your method: TP +10/+20%, rebuy −10/−20%",yours_20_40:"Your method: TP +20/+40%, rebuy −20/−40%",yours_30_60:"Your method: TP +30/+60%, rebuy −30/−60%",
+  proposed:"Proposed tweaks",dca:"Monthly DCA",lump:"All-in on day 1",cash:"Keep the cash"};
+const score=r=>r.coin_equiv!=null?r.coin_equiv:r.coins;
+const ACC_NAMES={A:"A · Dip ladder, one average for the trade bucket",A_lots:"A · Dip ladder, every buy its own lot",B_strict:"B · Washed out (3+) and turning up",B_loose:"B · Washed out (2+) and turning up",dca:"C · Monthly DCA (benchmark)"};
+function coinsAcc(){return (BT.coins||[]).filter(c=>c.accumulate);}
+function renderAccumulate(){const O=BT.accumulate_overall,AA=BT.accumulate_assumptions;if(!O||!O.length)return "";
+  const coins=BT.coins.filter(c=>c.accumulate);const a0=coins[0].accumulate;
+  let h=`<div class="card" style="margin-top:14px"><b>Accumulate from zero: which buy-in signal works?</b> <span class="small muted">· ${a0.start} → ${a0.end} (${a0.days} days)</span>
+    <p class="small muted" style="margin:4px 0 8px">${esc(AA.money)}. ${esc(AA.split)}. ${esc(AA.ladder)}. ${esc(AA.signals)}. Money no signal used within 60 days is bought anyway.
+    Orders under $5 aren't placed. <b>Stress test:</b> each model also starts 3, 6 and 9 months later, and each half of the period is run on its own.
+    A model has to beat <b>C</b> on most coins, start dates and halves to be worth the effort. Winning one stretch only = luck.</p>
+    <table><tr><th>Buy-in signal</th><th>Coins beating DCA</th><th>Start dates beating DCA</th><th>Halves beating DCA</th><th>Average vs DCA</th><th>Worst coin</th><th>Worst of any start</th><th>Trades</th></tr>
+    ${O.map(r=>{const tr=coinsAcc().reduce((n,c)=>n+c.accumulate.results[r.strategy].buys+c.accumulate.results[r.strategy].sells,0);return `<tr><td>${ACC_NAMES[r.strategy]||r.strategy}</td><td class="mono">${r.coins_beating_dca} / ${r.coins}</td><td class="mono">${r.starts!=null?r.starts_beating_dca+" / "+r.starts:"—"}</td><td class="mono">${r.halves_beating_dca} / ${r.halves}</td><td class="mono ${r.avg_vs_dca_pct>=0?"up":"dn"}">${pc(r.avg_vs_dca_pct)}</td><td class="mono ${r.worst_vs_dca_pct>=0?"up":"dn"}">${pc(r.worst_vs_dca_pct)}</td><td class="mono ${(r.starts_worst_pct||0)>=0?"up":"dn"}">${r.starts_worst_pct!=null?pc(r.starts_worst_pct):"—"}</td><td class="mono">${tr}</td></tr>`}).join("")}</table>
+    <table style="margin-top:10px"><tr><th>Coin</th>${Object.keys(ACC_NAMES).map(k=>`<th>${k==="dca"?"C":k==="A_lots"?"A lots":k.replace("_"," ")}</th>`).join("")}</tr>
+    ${coins.map(c=>{const R=c.accumulate.results,dca=R.dca.coin_equiv;return `<tr><td><b>${esc(c.symbol)}</b></td>${Object.keys(ACC_NAMES).map(k=>{const r=R[k];if(!r)return "<td>—</td>";
+      return `<td class="mono small">${qty(r.coin_equiv)}${k==="dca"?"":` <span class="${r.coin_equiv>=dca?"up":"dn"}">${pc((r.coin_equiv/dca-1)*100)}</span>`}<br><span class="muted">core ${qty(r.core)} · ${r.buys} buys · ${r.sells} sells${r.cash>0.5?` · ${money(r.cash)} waiting`:""}</span></td>`}).join("")}</tr>`}).join("")}</table>
+    <div class="small muted" style="margin-top:4px">Score = coins + cash still waiting, converted at the final price. "Core" = coins you keep for good. Same money into every model: ${money(a0.results.dca.contributed)} per coin.</div></div>`;
+  return h;}
+function renderBacktest(){if(!BT&&!BT_ERR){loadBacktest();return `<div class="card">Loading backtest…</div>`;}
+  if(!BT)return `<div class="card muted">No backtest published yet (${esc(BT_ERR)}). It's calculated by the watcher once a day; check back after the next run.</div>`;
+  const A=BT.assumptions||{};
+  let h=`<div class="card"><b>What would the rules have done?</b> <span class="small muted">· last ${BT.months} months · calculated ${new Date(BT.generated_at).toLocaleString()} · v${esc(BT.version)}</span>
+    <p class="small muted" style="margin:8px 0 0">Start: ${esc(A.start||"")}. Fees: ${esc(A.fees||"")}. ${esc(A.fills||"")}. Not tested: ${esc(A.not_tested||"")}.<br>
+    <b>Score = total value in coins</b>: coins held plus any cash converted at the final price, so selling high and holding cash counts fairly. <b>Ladder moves after trims</b> = after each trim the ladder restarts from the trim price, using the cash on hand. <b>Half monthly + half deep ladder</b> = half the reserve bought monthly, half on a −10/−25/−40/−55% ladder that also moves after trims; no buy-early.</p></div>`;
+  h=renderMyPlan()+h;
+  h+=renderStress();
+  h+=renderAccumulate();
+  if(BT.overall&&BT.overall.length){
+    h+=`<div class="card" style="margin-top:14px"><b>Overall: which approach held up across all coins?</b>
+      <p class="small muted" style="margin:4px 0 8px">Compared with monthly DCA on each coin, scored as total value in coins. Look for a high <b>average</b> and a <b>worst case</b> that isn't ugly. Consistent beats spectacular.</p>
+      <table><tr><th>Strategy</th><th>Coins where it beat DCA</th><th>Average vs DCA</th><th>Worst coin vs DCA</th></tr>
+      ${BT.overall.filter(r=>r.strategy!=="dca").map(r=>`<tr><td>${BT_NAMES[r.strategy]||r.strategy}</td><td class="mono">${r.coins_beating_dca} / ${r.coins}</td><td class="mono ${r.avg_vs_dca_pct>=0?"up":"dn"}">${pc(r.avg_vs_dca_pct)}</td><td class="mono ${r.worst_vs_dca_pct>=0?"up":"dn"}">${pc(r.worst_vs_dca_pct)}</td></tr>`).join("")}</table></div>`;}
+  for(const c of BT.coins){
+    if(c.error){h+=`<div class="card" style="margin-top:14px"><b>${esc(c.symbol)}</b> <span class="muted small">failed: ${esc(c.error)}</span></div>`;continue;}
+    const R=c.results,best=Math.max(...Object.values(R).filter((r,i)=>Object.keys(R)[i]!=="cash").map(score)),dca=score(R.dca);
+    h+=`<div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between"><b style="font-size:18px">${esc(c.symbol)}</b>
+      <span class="small mono">${c.start} → ${c.end} · ${money(c.start_price)} → ${money(c.end_price)} <span class="${c.change_pct>=0?"up":"dn"}">${pc(c.change_pct)}</span> · low ${money(c.low)} · high ${money(c.high)}</span></div>
+      <table style="margin-top:8px"><tr><th>Strategy</th><th>Score (in coins)</th><th>vs monthly DCA</th><th>Coins held</th><th>Value</th><th>Avg buy price</th><th>Sells</th></tr>
+      ${Object.keys(BT_NAMES).filter(k=>R[k]).map(k=>{const r=R[k],sc=score(r),top=k!=="cash"&&sc===best;return `<tr style="${top?"background:#0f1f1a":""}"><td>${BT_NAMES[k]}${top?" 🏆":""}</td><td class="mono"><b>${qty(sc)}</b></td>
+        <td class="mono ${sc>=dca?"up":"dn"}">${k==="dca"?"—":pc((sc/dca-1)*100)}</td><td class="mono">${qty(r.coins)}</td><td class="mono">${money(r.value)}${r.cash>0.5?` <span class="muted small">(incl. ${money(r.cash)} cash)</span>`:""}</td>
+        <td class="mono">${r.avg_buy_price?money(r.avg_buy_price):"—"}</td><td class="mono">${["dca","lump","cash"].includes(k)?"—":r.trims}</td></tr>`}).join("")}</table>
+      <div class="small muted" style="margin-top:4px">🏆 = best of the buying strategies. Keeping the cash is shown for reference; it always wins when prices fall, but nobody knows that in advance.</div>
+      <div class="small muted" style="margin-top:6px">Signals over the period: max ${c.signals.max_top_flags} top flags, max ${c.signals.max_bottom_signals} bottom signals · ${c.signals.days_3plus_top} days with 3+ top flags · ${c.signals.days_3plus_bottom} days with 3+ bottom signals</div>
+      <details style="margin-top:8px"><summary class="small">Every trade the app's rules made</summary><table>${R.app.events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")||`<tr><td class="muted small">No trades.</td></tr>`}</table></details>
+      <details><summary class="small">Every trade with half monthly + half deep ladder</summary><table>${(R.hybrid||R.proposed).events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")||`<tr><td class="muted small">No trades.</td></tr>`}</table></details></div>`;}
+  return h+`<p class="small muted">Past results don't predict future ones. This shows how the rules behaved on real prices, nothing more.</p>`;}
+
+function renderJournal(){if(!S.log.length)return XP_HELP+`<div class="card muted">Nothing logged yet. Your first check-in starts the journal.</div>`;
+  return XP_HELP+`<div class="card"><table><tr><th>When</th><th>Coin</th><th>What happened</th><th>XP</th></tr>${S.log.map(l=>`<tr><td class="small muted">${new Date(l.ts).toLocaleString()}</td><td>${esc(l.coin)}</td><td>${esc(l.text)}</td><td class="mono ${l.xp>=0?"up":"dn"}">${l.xp>=0?"+":""}${l.xp}</td></tr>`).join("")}</table></div>`;}
+
+
+
+/* ---------- actions ---------- */
+function coinData(sym){return DATA.coins.find(c=>c.symbol===sym);}
+function modal(html){document.getElementById("modalBox").innerHTML=html;document.getElementById("modal").classList.add("open");}
+function closeModal(){document.getElementById("modal").classList.remove("open");document.getElementById("modalBox").classList.remove("wide");stopChart();}
+document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
+
+function doCheckIn(){if(checkIn())render();}
+// tap cycles: automatic -> forced ON -> forced OFF -> automatic (overrides expire after 7 days)
+function cycleOverride(sym,k){const me=C(sym);me.ovr=me.ovr||{};const o=ovr(sym,k);
+  if(!o)me.ovr[k]={v:true,ts:Date.now()};else if(o.v)me.ovr[k]={v:false,ts:Date.now()};else delete me.ovr[k];
+  save();render();}
+function skip(sym,what){addXP(5,`Logged a skip on ${what}. Honest logging still counts.`,sym,"skip");render();}
+
+
+document.getElementById("panicBtn").onclick=()=>{
+  const lines=(DATA?DATA.coins:[]).map(c=>{c=eff(c);const d=directive(c),me=C(c.symbol);return `<li><b>${c.symbol}</b>: ${esc(d.title)}. Core ${qty(me.core)} is off-limits.</li>`}).join("");
+  modal(`<h3>Pause. Breathe.</h3><p>Here's what <b>your rules</b> say right now:</p><ul>${lines}</ul>
+  <p class="small muted">Panic-selling isn't in your plan. Most of the times you sold in fear, price bounced ~15% after. A 24-hour cooldown costs you nothing.</p>
+  <div class="btns"><button class="b go" onclick="startCool()">Start 24h cooldown</button><button class="b warn" onclick="offPlan()">Sell anyway (off-plan)</button><button class="b" onclick="closeModal()">Close</button></div>`);};
+function startCool(){S.panic={until:Date.now()+864e5};save();closeModal();toast("Cooldown started. See you in 24h.");render();}
+function heldLine(){S.panic=null;addXP(100,"Finished a 24h cooldown and held the line.","","held");render();}
+function offPlan(){S.lastOffPlan=Date.now();S.streak.count=0;S.panic=null;addXP(-30,"Off-plan sell logged. No shame. Note what you felt in your journal.","","offplan");closeModal();render();}
+
+function addCoin(){const repo=(S.settings.repoUrl||"").replace(/\/$/,"");
+  modal(`<h3>Add a coin</h3><p class="small muted">The watcher on GitHub decides which coins get scored. Add a line to <b>coins.json</b> and it shows up here within 30 minutes.</p>
+  <div class="three"><div><label>Symbol</label><input id="nSym" placeholder="QNT" oninput="snip()"></div><div><label>Name</label><input id="nName" placeholder="Quant" oninput="snip()"></div><div><label>Kraken pair</label><input id="nPair" placeholder="QNTUSD" oninput="snip()"></div></div>
+  <label>Line to paste into the "coins" list (after the last coin, with a comma)</label><pre id="nSnip"></pre>
+  <div class="btns"><button class="b pri" onclick="copySnip()">Copy line</button>${repo?`<a class="b" style="text-decoration:none;padding:7px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)" href="${esc(repo)}/edit/main/coins.json">Open coins.json on GitHub</a>`:`<span class="small muted">Add your repo URL in Setup for a direct edit link.</span>`}<button class="b" onclick="closeModal()">Close</button></div>`);snip();}
+function snip(){const s=(document.getElementById("nSym").value||"QNT").toUpperCase(),n=document.getElementById("nName").value||s,p=(document.getElementById("nPair").value||s+"USD").toUpperCase();
+  document.getElementById("nSnip").textContent=`{ "symbol": "${s}", "name": "${n}", "kraken": "${p}", "futures": "PF_${p}", "anchor": null }`;}
+function copySnip(){navigator.clipboard.writeText(document.getElementById("nSnip").textContent).then(()=>toast("Copied"),()=>toast("Select and copy the line manually"));}
+
+function copyBackup(){navigator.clipboard.writeText(JSON.stringify(S)).then(()=>toast("Backup copied. Paste it somewhere safe"),()=>{modal(`<h3>Backup</h3><textarea rows="8">${esc(JSON.stringify(S))}</textarea><div class="btns"><button class="b" onclick="closeModal()">Close</button></div>`);});}
+function restore(){modal(`<h3>Restore</h3><textarea id="rb" rows="8" placeholder="Paste backup here"></textarea><div class="btns"><button class="b pri" onclick="doRestore()">Restore</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function doRestore(){try{const s=JSON.parse(document.getElementById("rb").value);if(!s.coins)throw 0;S=Object.assign(blank(),s);save();closeModal();toast("Restored");render();}catch(e){toast("That doesn't look like a backup");}}
+function wipe(){modal(`<h3>Reset everything?</h3><p class="small muted">Deletes holdings, XP and journal on this device.</p><div class="btns"><button class="b warn" onclick="S=blank();save();closeModal();render()">Yes, reset</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+
+document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{TAB=b.dataset.t;render();});
+
+async function fetchData(){
+  const prevGen=DATA&&DATA.generated_at;
+  try{const r=await fetch(S.settings.dataUrl+(S.settings.dataUrl.includes("?")?"&":"?")+"t="+Date.now(),{cache:"no-store"});if(!r.ok)throw new Error(r.status);
+    DATA=await r.json();IS_DEMO=false;FETCH_ERR=null;}
+  catch(e){FETCH_ERR=String(e.message||e);if(DEMO){DATA=DEMO;IS_DEMO=true;}}
+  if(DATA&&DATA.generated_at!==prevGen){CH.candles={};}
+  if(DATA)DATA.coins.forEach(c=>C(c.symbol));save();
+  const ae=document.activeElement;if(ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName))return;render();}
+
+/* ---------- live prices (Kraken WebSocket v2, public, no key) ---------- */
+const LIVE={ws:null,prices:{},mismatch:{},last:0,status:"off",tries:0,ohlc:null,dirty:false};
+function ageMin(){return DATA?(Date.now()-Date.parse(DATA.generated_at))/60000:0;}
+function wsSym(c){return c.ws_symbol||c.symbol+"/USD";}
+function livePrice(c){const p=LIVE.prices[wsSym(c)];if(!p||Date.now()-p.ts>120000)return null;
+  if(ageMin()<75&&c.price&&Math.abs(p.last/c.price-1)>0.25){LIVE.mismatch[c.symbol]=true;return null;}
+  LIVE.mismatch[c.symbol]=false;return p.last;}
+function eff(c){const lp=livePrice(c);if(lp==null)return c;const p=LIVE.prices[wsSym(c)];
+  return Object.assign({},c,{price:lp,live:true,change_24h:p.chg!=null?p.chg:c.change_24h,
+  });}
+function setLive(st){LIVE.status=st;const el=document.getElementById("liveStatus");if(!el)return;
+  el.className="live "+(st==="live"?"on":st==="connecting"||st==="reconnecting"?"warn":"");
+  el.querySelector("span").textContent=st==="live"?"live":st==="off"?(IS_DEMO?"demo · no live feed":"offline"):st;}
+function wsSend(o){if(LIVE.ws&&LIVE.ws.readyState===1)LIVE.ws.send(JSON.stringify(o));}
+function connectLive(){
+  if(IS_DEMO||!DATA||(LIVE.ws&&LIVE.ws.readyState<2))return;
+  setLive(LIVE.tries?"reconnecting":"connecting");
+  let ws;try{ws=new WebSocket("wss://ws.kraken.com/v2");}catch(e){setLive("off");return;}
+  LIVE.ws=ws;
+  ws.onopen=()=>{LIVE.tries=0;wsSend({method:"subscribe",params:{channel:"ticker",symbol:DATA.coins.map(wsSym)}});
+    if(LIVE.ohlc)wsSend({method:"subscribe",params:{channel:"ohlc",symbol:[LIVE.ohlc.sym],interval:LIVE.ohlc.iv}});};
+  ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}LIVE.last=Date.now();
+    if(m.channel==="ticker"&&m.data){for(const d of m.data){const last=+d.last;if(!(last>0))continue;
+        LIVE.prices[d.symbol]={last,chg:d.change_pct!=null?+d.change_pct:null,ts:Date.now()};tickUI(d.symbol);}
+      if(LIVE.status!=="live")setLive("live");}
+    else if(m.channel==="ohlc"&&m.data&&LIVE.ohlc&&LIVE.ohlc.cb){LIVE.ohlc.cb(m.data);}
+    else if(m.channel==="heartbeat"&&LIVE.status!=="live"&&Object.keys(LIVE.prices).length)setLive("live");};
+  ws.onclose=()=>{setLive("reconnecting");LIVE.tries++;setTimeout(connectLive,Math.min(30000,1000*2**LIVE.tries));};
+  ws.onerror=()=>{try{ws.close();}catch(e){}};}
+function tickUI(ws){const c=DATA&&DATA.coins.find(x=>wsSym(x)===ws);if(!c)return;const e=eff(c);
+  const px=document.getElementById("px-"+c.symbol);if(px&&px.textContent!==money(e.price)){px.textContent=money(e.price);}
+  const ch=document.getElementById("ch-"+c.symbol);if(ch){ch.textContent=pc(e.change_24h)+" 24h";ch.className=e.change_24h>=0?"up":"dn";}
+  const src=document.getElementById("src-"+c.symbol);if(src){src.textContent=e.live?"● live":"watcher";src.className="pill "+(e.live?"lv":"");}
+  const sp=document.getElementById("sp-"+c.symbol);if(sp){const col=(c.change_7d||0)>=0?"var(--green)":"var(--red)";sp.innerHTML=spark(liveSpark(e),col);}
+  const cp=document.getElementById("chartPx");if(cp&&CH.sym===c.symbol)cp.textContent=money(e.price);
+  LIVE.dirty=true;}
+// re-check missions with live prices every 20s (never while you're typing or a dialog is open)
+setInterval(()=>{if(!LIVE.dirty||TAB!=="missions")return;if(document.getElementById("modal").classList.contains("open"))return;
+  const a=document.activeElement;if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;LIVE.dirty=false;
+  const sig=DATA.coins.map(c=>{const d=directive(eff(c));return c.symbol+d.k+d.title+d.text;}).join("|");
+  if(sig!==LIVE.sig){LIVE.sig=sig;render();}},20000);
+// watchdog: no message for 60s means the feed is dead
+setInterval(()=>{if(LIVE.status==="live"&&Date.now()-LIVE.last>60000){setLive("reconnecting");try{LIVE.ws.close();}catch(e){}}},15000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){fetchData();if(!LIVE.ws||LIVE.ws.readyState>1)connectLive();}});
+
+/* ---------- charts ---------- */
+const IV={"1h":60,"4h":240,"1d":1440,"1w":10080};
+const CH={chart:null,series:null,sym:null,iv:"1d",candles:{},lastT:0,ro:null};
+async function getCandles(sym){if(CH.candles[sym])return CH.candles[sym];
+  if(IS_DEMO&&DEMO_CANDLES)return CH.candles[sym]=DEMO_CANDLES[sym];
+  const base=S.settings.dataUrl.replace(/[^\/]*$/,"");
+  const r=await fetch(base+"candles/"+sym+".json?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);
+  return CH.candles[sym]=await r.json();}
+function smaLine(bars,n){const out=[];let sum=0;for(let i=0;i<bars.length;i++){sum+=bars[i].close;if(i>=n)sum-=bars[i-n].close;if(i>=n-1)out.push({time:bars[i].time,value:sum/n});}return out;}
+function openChart(sym){const c=eff(coinData(sym));CH.sym=sym;
+  document.getElementById("modalBox").classList.add("wide");
+  modal(`<div class="row" style="justify-content:space-between"><div><h3 style="margin:0">${sym} <span class="mono" id="chartPx">${money(c.price)}</span></h3>
+    <div class="small muted" id="chartNote"></div></div><div class="row"><div class="ivs">${Object.keys(IV).map(k=>`<button class="b ${k===CH.iv?"on":""}" data-iv="${k}" onclick="setIv('${k}')">${k.toUpperCase()}</button>`).join("")}</div><button class="b" onclick="closeModal()">✕</button></div></div>
+    <div id="chart"></div>
+    <div class="legend"><span style="--c:#5aa9ff">20 avg</span><span style="--c:#ffb547">50 avg</span><span style="--c:#a98bff">200 avg</span><span style="--c:#ff5c7a">your sell orders</span><span style="--c:#3ddc97">your buy-backs</span><span style="--c:#e7ecf5">your lot costs</span></div>
+    <p class="small muted">Decide on the <b>1D</b> chart, check the big picture on <b>1W</b>. 1H and 4H are mostly noise. Use them to watch, not to act.</p>`);
+  drawChart();}
+function setIv(k){CH.iv=k;document.querySelectorAll(".ivs button").forEach(b=>b.classList.toggle("on",b.dataset.iv===k));drawChart();}
+function stopChart(){if(LIVE.ohlc){wsSend({method:"unsubscribe",params:{channel:"ohlc",symbol:[LIVE.ohlc.sym],interval:LIVE.ohlc.iv}});LIVE.ohlc=null;}
+  if(CH.ro){CH.ro.disconnect();CH.ro=null;}if(CH.chart){CH.chart.remove();CH.chart=null;}}
+async function drawChart(){const sym=CH.sym,c=coinData(sym),el=document.getElementById("chart"),note=document.getElementById("chartNote");
+  if(CH.chart){if(LIVE.ohlc){wsSend({method:"unsubscribe",params:{channel:"ohlc",symbol:[LIVE.ohlc.sym],interval:LIVE.ohlc.iv}});LIVE.ohlc=null;}CH.chart.remove();CH.chart=null;}
+  if(!window.LightweightCharts){el.innerHTML='<p class="muted">Chart library didn\'t load. Check your connection and reopen.</p>';return;}
+  let raw;try{raw=(await getCandles(sym))[CH.iv];}catch(e){el.innerHTML=`<p class="muted">No chart data yet for ${sym} (${esc(e.message)}). It appears after the next watcher run.</p>`;return;}
+  if(!raw||!raw.length){el.innerHTML='<p class="muted">No candles for this interval yet.</p>';return;}
+  const bars=raw.map(k=>({time:k[0],open:k[1],high:k[2],low:k[3],close:k[4]}));CH.lastT=bars[bars.length-1].time;
+  const ch=LightweightCharts.createChart(el,{height:430,layout:{background:{color:"#121826"},textColor:"#8a96b0",fontFamily:"JetBrains Mono, monospace"},
+    grid:{vertLines:{color:"#1b2236"},horzLines:{color:"#1b2236"}},rightPriceScale:{borderColor:"#26304a"},timeScale:{borderColor:"#26304a",timeVisible:CH.iv==="1h"||CH.iv==="4h"},crosshair:{mode:0}});
+  const s=ch.addCandlestickSeries({upColor:"#3ddc97",downColor:"#ff5c7a",borderVisible:false,wickUpColor:"#3ddc97",wickDownColor:"#ff5c7a"});
+  s.setData(bars);
+  [[20,"#5aa9ff"],[50,"#ffb547"],[200,"#a98bff"]].forEach(([n,col])=>{if(bars.length>n){const l=ch.addLineSeries({color:col,lineWidth:1.5,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});l.setData(smaLine(bars,n));}});
+  openOrders(sym,c).forEach(o=>s.createPriceLine({price:o.price,color:o.kind==="buyback"?"#3ddc97":"#ff5c7a",lineWidth:1,lineStyle:2,axisLabelVisible:true,
+    title:o.kind==="buyback"?"buy back −"+o.sale.levels[o.i].pct+"%":o.kind==="runner"?"runner +100%":"sell +"+TP[o.k]+"%"}));
+  M(sym).lots.forEach(l=>s.createPriceLine({price:lotPer(l),color:"#e7ecf5",lineWidth:1,lineStyle:0,axisLabelVisible:true,title:lotName(l)+" lot cost"}));
+  const show={"1h":120,"4h":150,"1d":180,"1w":200}[CH.iv];ch.timeScale().setVisibleLogicalRange({from:bars.length-show,to:bars.length+3});
+  CH.chart=ch;CH.series=s;
+  CH.ro=new ResizeObserver(()=>{if(CH.chart)CH.chart.applyOptions({width:el.clientWidth});});CH.ro.observe(el);
+  if(IS_DEMO){note.textContent="Demo candles. Your GitHub app streams real ones live.";return;}
+  note.textContent=LIVE.status==="live"?"Streaming live from Kraken":"History from the watcher · live feed connecting…";
+  LIVE.ohlc={sym:wsSym(c),iv:IV[CH.iv],cb:data=>{for(const k of data){if(k.symbol!==wsSym(c)||+k.interval!==IV[CH.iv])continue;
+      const t=Math.floor(Date.parse(k.interval_begin)/1000);if(!(t>=CH.lastT))continue;CH.lastT=t;
+      const bar={time:t,open:+k.open,high:+k.high,low:+k.low,close:+k.close};if(bar.close>0&&CH.series)CH.series.update(bar);}
+    note.textContent="Streaming live from Kraken";}};
+  wsSend({method:"subscribe",params:{channel:"ohlc",symbol:[LIVE.ohlc.sym],interval:LIVE.ohlc.iv}});}
+
+fetchData().then(()=>{setLive("off");connectLive();});setInterval(fetchData,5*60*1000);setInterval(renderHeader,60*1000);
+</script>
+</body>
+</html>

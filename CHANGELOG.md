@@ -4,6 +4,13 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 5.3.0 · 2026-11-22
+**Test: does buying at support beat buying on schedule?** A new table under "Your plan, replayed".
+- Same $30 deposits on the 1st and 15th, but the money waits as limit orders, half at the monthly pivot **S1** and half at **S2** (Traditional pivots from last month's high, low and close, as on TradingView), then is held.
+- Two versions: **wait** (unfilled money moves to the new month's levels) and **wait, then buy** (unfilled money is bought at market when a new month starts).
+- Compared with Buy + hold and your plan (70/30) on the same history.
+- 2 new tests (75 total), including the pivot math checked by hand.
+
 ## 5.2.0 · 2026-11-22
 **"Your plan, replayed on real prices."** A new card at the top of the Backtest tab.
 - Replays the exact v5.1 plan: $30 per coin on the 1st and 15th, 70% Core, monthly Trade lots at +20/+40%, buy-backs at −20/−40%, the monthly re-baseline, bull mode, real fees, and the $5 minimum order. ETH over 10 years, SOL since Coinbase listed it (mid-2021).
