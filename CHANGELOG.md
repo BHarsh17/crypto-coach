@@ -4,6 +4,9 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 4.0.1 · 2026-11-22
+- **Fix (found by checking the real backtest):** when a second buy-back lowered your average, the re-priced take-profit could "fill" on the same candle, even though that order didn't exist yet (SOL, 10 Oct 2025). Re-priced take-profits now wait for the next check, live and in the backtest. New test added.
+
 ## 4.0.0 · 2026-11-22
 **New rules, based on the 18-month backtest.** Your own method, tuned to the spacing that beat monthly DCA on all 5 coins:
 - **🔴 JUMP OUT:** take-profits at **+20%** and **+40%** above your base price (your average cost), each selling half your trade bucket.

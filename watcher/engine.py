@@ -90,7 +90,7 @@ def step(st, high, low, ts, rules):
                 if not st["cycle_buys"]:          # first buy-back of a new cycle
                     st["cycle"] += 1
                     st["tp_done"] = [False] * len(rules["take_profits"])
-                    reset_this_step = True
+                reset_this_step = True            # take-profit prices just moved: they wait for the next step
                 st["cycle_buys"].append(lv["price"])
                 # reference = average price paid, equal-dollar buys -> harmonic mean
                 st["ref"] = len(st["cycle_buys"]) / sum(1 / p for p in st["cycle_buys"])
@@ -98,8 +98,8 @@ def step(st, high, low, ts, rules):
                                   sale_price=bs["sale_price"], level=lv["n"], share=lv["share"], drop=lv["drop"]))
     st["buyback_sets"] = [b for b in st["buyback_sets"] if not all(lv["filled"] for lv in b["levels"])]
 
-    # 2) sells (highs): take-profits. If a buy-back just started a new cycle, its fresh
-    #    take-profit orders only exist from now on, so they wait for the next step.
+    # 2) sells (highs): take-profits. If any buy-back filled, the take-profit prices just moved
+    #    (new cycle or new average), so those orders only exist from now on: they wait a step.
     if reset_this_step:
         st["buyback_sets"] += created
         return new

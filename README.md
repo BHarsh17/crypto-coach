@@ -1,6 +1,6 @@
 # Crypto Coach
 
-**Version:** see `VERSION` (currently 4.0.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+**Version:** see `VERSION` (currently 4.0.1) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
 
 **Your rules, not your gut.** Crypto Coach keeps a set of buy and sell orders for each coin, watches the price around the clock, and pings your phone the moment one is reached: **🔴 JUMP OUT** (take profit), **🟢 JUMP IN** (buy back or buy the dip), or **🟡 HEADS UP** (something's going on). You still make every trade. It just makes sure the plan gets followed instead of the panic.
 
@@ -311,7 +311,7 @@ JUMP alerts are sent as high priority on ntfy; heads-ups as normal. No alert mea
 **No AI calculates any number or sets any flag.** Everything is plain, tested arithmetic on Kraken's data, fixed keyword rules on fixed news outlets, and CoinGecko's trending list.
 
 **On GitHub (watcher):**
-- **Maths self-test before every run** (49 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtest). If it fails, nothing is published.
+- **Maths self-test before every run** (50 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtest). If it fails, nothing is published.
 - **One engine for live and backtest:** the orders you're alerted on come from the same code (`watcher/engine.py`) the backtest replays, so what you were shown in testing is what runs live.
 - **News safety:** headlines are de-duplicated across runs, never counted twice, and articles dated in the future are treated as "now". Only web links (`http`/`https`) are kept from feeds. If every news feed fails, flag 5 stays off for that run rather than guessing.
 - **Bad data is rejected,** never used. A coin is rejected if Kraken returns fewer than 30 candles, candles out of time order, an impossible candle (low above the open or close, or high below them), or a latest candle that's too old.

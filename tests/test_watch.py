@@ -527,6 +527,18 @@ def test_engine_reference_is_average_buy_back_price():
     assert tps == [round(st["ref"] * 1.2, 6), round(st["ref"] * 1.4, 6)]
 
 
+def test_engine_moved_take_profits_wait_a_step():
+    # Found in the real SOL backtest (10 Oct 2025): a 2nd buy-back lowered the average, and the
+    # re-priced take-profit "filled" on the same candle. It can't: that order didn't exist yet.
+    st = engine.new_state(100.0, 100.0, R)
+    engine.step(st, 120.0, 110.0, 1, R)            # sell at 120 -> buy-backs 96 / 72
+    engine.step(st, 100.0, 95.0, 2, R)             # buy-back 96 fills -> new cycle, base 96, TPs 115.2 / 134.4
+    ev = engine.step(st, 115.5, 70.0, 3, R)        # 72 fills -> base 82.29, TP1 now 98.74; high 115.5 is above both
+    assert "take_profit" not in [e["kind"] for e in ev] and "buy_back" in [e["kind"] for e in ev], ev
+    ev = engine.step(st, 99.0, 90.0, 4, R)
+    assert [e["kind"] for e in ev] == ["take_profit"] and abs(ev[0]["price"] - st["ref"] * 1.2) < 1e-9
+
+
 def test_engine_dip_ladder_independent_of_reference():
     st = engine.new_state(100.0, 100.0, R)
     ev = engine.step(st, 100.0, 59.0, 1, R)
