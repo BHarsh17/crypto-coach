@@ -4,6 +4,15 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 5.4.0 · 2026-11-22
+**More ways to buy, same money.** Added to the "different ways to buy" table:
+- **Weekly, same money** ($13.85 every Monday) and **Weekly $15**.
+- **Buy more below the 200-day average** ($60 below, $15 above; leftovers wait).
+- **Crash reserve:** buy $20 and save $10 per deposit; when the price is 50%+ below its all-time high, spend up to $90.
+- **Value averaging:** buy more when your stack is worth less than you've put in, less when it's ahead.
+- **Lump sum on day one**, for reference.
+- 2 new tests (77 total), including a cross-check that two separately written calculations of plain buying agree.
+
 ## 5.3.0 · 2026-11-22
 **Test: does buying at support beat buying on schedule?** A new table under "Your plan, replayed".
 - Same $30 deposits on the 1st and 15th, but the money waits as limit orders, half at the monthly pivot **S1** and half at **S2** (Traditional pivots from last month's high, low and close, as on TradingView), then is held.

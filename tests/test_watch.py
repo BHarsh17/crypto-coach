@@ -1101,6 +1101,37 @@ def test_pivot_hold_waits_fills_and_falls_back():
     close(f["cash"], 30.0, 0.01)                                      # only Mar 1's new money is still on its orders
 
 
+def test_buy_models_same_money_and_cross_check():
+    rng = random.Random(5)
+    rows, px = [], 100.0
+    for _ in range(900):
+        o = px
+        px *= math.exp(rng.gauss(0.0005, 0.04))
+        rows.append((o, max(o, px) * 1.02, min(o, px) * 0.98, px))
+    d = st_series(rows).d
+    plain = myplan.buy_model(d, 0, "dca")
+    close(plain["coins"], myplan.replay(d, amount=30.0)["dca_coins"], 1e-9)     # two independent codes agree
+    for m in myplan.BUY_MODELS:
+        r = myplan.buy_model(d, 0, m)
+        assert r["cash"] >= 0 and r["coins"] > 0
+        close(r["value"], r["coins"] * d[-1]["c"] + r["cash"], 0.01)
+        if m not in ("weekly_15",):
+            assert abs(r["invested"] - plain["invested"]) <= 0.06 * plain["invested"], m   # same money, give or take a week
+
+
+def test_buy_models_rules():
+    flat = st_series([(100, 100, 100, 100)] * 260).d                 # price never below its average, no crash
+    b = myplan.buy_model(flat, 0, "ma200_boost")
+    close(b["cash"], b["invested"] / 2, 0.01)                         # above the average: spends half, saves half
+    c = myplan.buy_model(flat, 0, "crash_reserve")
+    close(c["cash"], b["invested"] / 3, 0.01)                         # no crash: saves a third
+    rows = [(100, 100, 100, 100)] * 60 + [(40, 40, 40, 40)] * 40      # then 60% below the high
+    c2 = myplan.buy_model(st_series(rows).d, 0, "crash_reserve")
+    assert c2["cash"] < 1                                             # the reserve was spent in the crash
+    w = myplan.buy_model(flat, 0, "weekly_same")
+    assert w["buys"] == sum(1 for x in flat if myplan._d(x["t"]).weekday() == 0)
+
+
 # =================================================================== end to end
 def test_end_to_end_offline_runs():
     root = os.path.join(HERE, "..")

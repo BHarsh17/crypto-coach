@@ -677,6 +677,7 @@ def main():
             mp["coins"][sym] = rnd(r)
             mp["coins"][sym]["pivot_wait"] = rnd(myplan.pivot_hold(d_, amount=30.0, start=st_, fallback=False))
             mp["coins"][sym]["pivot_fallback"] = rnd(myplan.pivot_hold(d_, amount=30.0, start=st_, fallback=True))
+            mp["coins"][sym]["models"] = {m: rnd(myplan.buy_model(d_, st_, m, amount=30.0)) for m in myplan.BUY_MODELS}
     if mp["coins"]:
         mp["total"] = {k: round(sum(c[k] for c in mp["coins"].values()), 2) for k in ("invested", "value", "dca_value", "cash")}
     doc_myplan = mp

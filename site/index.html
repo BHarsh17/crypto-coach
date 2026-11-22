@@ -146,7 +146,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "5.3.0";
+const APP_VERSION = "5.4.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -497,7 +497,13 @@ function renderBuyInCompare(MP){const has=Object.values(MP.coins).some(r=>r.pivo
       +row("Buy + hold (buy the day money arrives)",r.dca_coins,0,b,b,k)
       +row("Your plan (70% Core / 30% Trade)",r.coins,r.cash,r.value,b,k)
       +(r.pivot_wait?row(`S1/S2 + hold · wait <span class="muted small">(${r.pivot_wait.limit_fills} fills)</span>`,r.pivot_wait.coins,r.pivot_wait.cash,r.pivot_wait.value,b,k):"")
-      +(r.pivot_fallback?row(`S1/S2 + hold · wait, then buy <span class="muted small">(${r.pivot_fallback.limit_fills} fills, ${r.pivot_fallback.market_buys} at market)</span>`,r.pivot_fallback.coins,r.pivot_fallback.cash,r.pivot_fallback.value,b,k):"");}).join("")}</table></div>`;}
+      +(r.pivot_fallback?row(`S1/S2 + hold · wait, then buy <span class="muted small">(${r.pivot_fallback.limit_fills} fills, ${r.pivot_fallback.market_buys} at market)</span>`,r.pivot_fallback.coins,r.pivot_fallback.cash,r.pivot_fallback.value,b,k):"")
+      +(r.models?Object.entries(MODEL_NAMES).filter(([m])=>r.models[m]&&m!=="dca").map(([m,n])=>{const x=r.models[m];
+         const per=m==="weekly_15"?` <span class="muted small">(put in ${money(x.invested)}; per $ in: ${pc((x.value/x.invested)/(b/r.invested)*100-100)})</span>`:"";
+         return row(n+per,x.coins,x.cash,x.value,b,k);}).join(""):"");}).join("")}</table>
+    <div class="small muted" style="margin-top:6px">Every model gets the same deposits (except "Weekly $15", which puts in a bit more, so compare it per dollar). Money a model doesn't spend is counted as cash. Lump sum = all of it on day one, for reference.</div></div>`;}
+const MODEL_NAMES={weekly_same:"Weekly, same money ($13.85 every Monday)",weekly_15:"Weekly $15",ma200_boost:"Buy more below the 200-day average ($60 below, $15 above)",
+  crash_reserve:"Crash reserve (buy $20, save $10; spend up to $90 when 50%+ below the high)",value_avg:"Value averaging (buy more when behind, less when ahead)",lump:"Lump sum on day one"};
 function renderStress(){if(!ST&&!ST_ERR){loadStress();return `<div class="card" style="margin-top:14px">Loading stress test…</div>`;}
   if(!ST)return `<div class="card muted" style="margin-top:14px">No stress test published yet (${esc(ST_ERR)}). It runs once a day on GitHub.</div>`;
   const A=ST.assumptions||{},O=ST.overall||[],D=ST.deep||{};

@@ -248,3 +248,65 @@ def pivot_hold(daily, amount=30.0, days=(1, 15), start=0, fallback=False):
     cash = cash_s1 + cash_s2
     return {"invested": round(invested, 2), "coins": coins, "cash": round(cash, 2),
             "value": round(coins * px + cash, 2), "fees": round(fees, 2), "limit_fills": fills, "market_buys": market}
+
+
+def ath_series(daily):
+    """Highest high BEFORE each day (no look-ahead)."""
+    out, hi = [], 0.0
+    for c in daily:
+        out.append(hi or None)
+        hi = max(hi, c["h"])
+    return out
+
+
+def buy_model(daily, start, model, amount=30.0, days=(1, 15)):
+    """Same deposits for every model ($amount on the 1st and 15th, or the weekly equivalent);
+    each model decides how much of the money waiting to spend, at the open (market, taker fee).
+    Money not spent is counted as cash at the end."""
+    ma200 = averages(daily, 200)
+    ath = ath_series(daily)
+    pot = coins = invested = fees = 0.0
+    buys = 0
+    yearly = amount * len(days) * 12
+    if model == "lump":
+        n_dep = sum(1 for i in range(start, len(daily)) if _d(daily[i]["t"]).day in days)
+        total = n_dep * amount
+        c = daily[start]
+        coins = total * (1 - TAKER) / c["o"]
+        return {"invested": round(total, 2), "coins": coins, "cash": 0.0, "value": round(coins * daily[-1]["c"], 2), "buys": 1}
+    for i in range(start, len(daily)):
+        c = daily[i]
+        dt = _d(c["t"])
+        if model in ("weekly_same", "weekly_15"):
+            dep = (yearly / 52 if model == "weekly_same" else 15.0) if dt.weekday() == 0 else 0.0
+        else:
+            dep = amount if dt.day in days else 0.0
+        if not dep:
+            continue
+        pot += dep
+        invested += dep
+        px, prev = c["o"], i - 1
+        if model in ("weekly_same", "weekly_15", "dca"):
+            spend = dep
+        elif model == "ma200_boost":
+            below = prev >= 0 and ma200[prev] and daily[prev]["c"] < ma200[prev]
+            spend = 2 * amount if below else amount / 2
+        elif model == "crash_reserve":
+            deep = prev >= 0 and ath[i] and daily[prev]["c"] <= 0.5 * ath[i]
+            spend = 3 * amount if deep else amount * 2 / 3
+        elif model == "value_avg":
+            value = coins * daily[prev]["c"] if prev >= 0 else 0.0
+            spend = max(0.0, min(3 * amount, invested - value))
+        else:
+            raise ValueError(model)
+        spend = min(spend, pot)
+        if spend >= MIN_ORDER:
+            coins += spend * (1 - TAKER) / px
+            fees += spend * TAKER
+            pot -= spend
+            buys += 1
+    return {"invested": round(invested, 2), "coins": coins, "cash": round(pot, 2),
+            "value": round(coins * daily[-1]["c"] + pot, 2), "buys": buys}
+
+
+BUY_MODELS = ("dca", "weekly_same", "weekly_15", "ma200_boost", "crash_reserve", "value_avg", "lump")
