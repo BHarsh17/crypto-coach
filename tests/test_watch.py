@@ -7,6 +7,7 @@ Three layers:
   3. scenarios          - every flag, signal, ladder and alert tested at its exact boundary
 """
 import json
+from datetime import datetime
 import math
 import os
 import random
@@ -23,6 +24,8 @@ import news  # noqa: E402
 import watch  # noqa: E402
 sys.path.insert(0, os.path.join(HERE, "..", "backtest"))
 import accumulate as acc  # noqa: E402
+import history  # noqa: E402
+import stress  # noqa: E402
 
 DAY = 86400
 
@@ -867,6 +870,167 @@ def test_acc_money_and_coins_add_up():
         coins = sum(e[4] for e in r["events"] if not e[1].startswith("Gain"))
         close(coins, r["coins"], 1e-6)                           # every coin came from a logged trade
         assert r["core"] >= -1e-12 and r["trade"] >= -1e-12 and r["cash"] >= -0.01
+
+
+# =================================================================== stress test (v5 rules, long history)
+def st_series(rows, t0=T0):
+    return stress.Series([{"t": t0 + k * 86400, "o": o, "h": h, "l": l, "c": c, "v": 1.0} for k, (o, h, l, c) in enumerate(rows)])
+
+
+def test_stress_rung_fills_at_gap_open_with_maker_fee():
+    s = st_series([(100, 100, 100, 100)] * 36 + [(80, 81, 79, 80)] + [(80, 80, 80, 80)] * 5)
+    sim = stress.Sim(s, 35, 41, stress.BASE, record=True)
+    sim.run()
+    e = sim.events[0]
+    assert e[1] == "buy-in rung 1"
+    close(e[2], 80.0, 1e-12)                       # the 90 limit filled at the lower open, not at 90
+    close(e[3], 500 / 4, 1e-9)                     # a quarter of the $500 waiting
+    close(e[4], 125 * (1 - stress.MAKER) / 80, 1e-12)
+
+
+def test_stress_passed_rungs_market_one_per_week():
+    rows = [(100, 100, 100, 100)] * 39 + [(50, 50, 50, 50)] * 20
+    s = st_series(rows)
+    sim = stress.Sim(s, 39, 58, stress.BASE, record=True)
+    sim.run()
+    buys = [e for e in sim.events if "already passed" in e[1]]
+    assert [e[1][:13] for e in buys] == ["buy-in rung 1", "buy-in rung 2", "buy-in rung 3"]
+    days = [datetime.strptime(e[0], "%Y-%m-%d") for e in buys]
+    assert days[0] == datetime.strptime(stress.ymd(s.d[40]["t"]), "%Y-%m-%d")   # next open after arming
+    assert all((b - a).days >= 7 for a, b in zip(days, days[1:]))
+    for e in buys:
+        close(e[3], 125.0, 1e-9)                    # 1/4, then 1/3 of the rest, then 1/2 of the rest
+        close(e[4], 125 * (1 - stress.TAKER) / 50, 1e-12)
+
+
+def test_stress_three_buyins_a_month_max():
+    s = st_series([(100, 100, 100, 100)] * 150)
+    sim = stress.Sim(s, 10, 149, stress.BASE, entry="random", p_random=1.0, seed=1)
+    sim.run()
+    assert max(sim.month_buyins.values()) == 3
+
+
+def test_stress_lot_modes():
+    s = st_series([(100, 100, 100, 100)] * 70)     # Jan 1 .. Mar 11
+    for mode, want in (("buy", 3), ("month", 2), ("avg", 1)):
+        sim = stress.Sim(s, 0, 69, dict(stress.BASE, lots=mode))
+        sim.add_trade(2, 1.0, 100.0)               # January
+        sim.add_trade(20, 1.0, 120.0)              # January
+        sim.add_trade(40, 1.0, 90.0)               # February
+        assert len(sim.lots) == want, (mode, len(sim.lots))
+    sim = stress.Sim(s, 0, 69, dict(stress.BASE, lots="month"))
+    sim.add_trade(2, 1.0, 100.0)
+    sim.add_trade(20, 1.0, 120.0)
+    close(sim.lots[0]["cost"] / sim.lots[0]["q"], 110.0, 1e-12)
+    close(sim.lots[0]["sell_q"], 1.0, 1e-12)
+    sim.lots[0]["sold"] = True                     # once a monthly lot has sold, new buys start a new lot
+    sim.add_trade(25, 1.0, 100.0)
+    assert len(sim.lots) == 2
+
+
+def test_stress_bull_mode_keeps_a_runner():
+    rows, px = [], 50.0
+    for _ in range(300):
+        rows.append((px, px * 1.001, px * 0.999, px * 1.003))
+        px *= 1.003
+    s = st_series(rows)
+    assert s.bull(298)
+    v = dict(stress.BASE, bull=True)
+    sim = stress.Sim(s, 290, 299, v)
+    sim.lots = [{"q": 0.5, "cost": 0.5 * 80.0, "sell_q": 0.5, "done": [True, False], "runner": False, "month": s.ym[290], "sold": True}]
+    sim.day(299)                                   # high is far above 80 x 1.4
+    lot = sim.lots[0]
+    close(lot["q"], 0.25, 1e-12)
+    assert lot["runner"]
+    assert [o for o in sim.snapshot() if o[0] == "runner"][0][2] == 160.0
+    v2 = dict(stress.BASE, bull=False)              # without bull mode the whole remainder sells
+    sim2 = stress.Sim(s, 290, 299, v2)
+    sim2.lots = [{"q": 0.5, "cost": 40.0, "sell_q": 0.5, "done": [True, False], "runner": False, "month": s.ym[290], "sold": True}]
+    sim2.day(299)
+    assert sim2.lots == []
+
+
+def test_stress_new_buy_backs_wait_a_day():
+    s = st_series([(100, 100, 100, 100)] * 5 + [(100, 150, 50, 100)])
+    sim = stress.Sim(s, 0, 5, stress.BASE)
+    sim.lots = [{"q": 1.0, "cost": 100.0, "sell_q": 0.5, "done": [False, False], "runner": False, "month": s.ym[0], "sold": False}]
+    sim.day(5)                                     # +20% and +40% fill; the low would hit the buy-backs too
+    assert sim.sells == 2 and sim.buys == 0
+    assert len(sim.sales) == 2 and not any(lv["filled"] for x in sim.sales for lv in x["levels"])
+
+
+def test_stress_stale_cash_goes_back_to_buy_ins():
+    s = st_series([(100, 100, 100, 100)] * 200)
+    sim = stress.Sim(s, 0, 199, dict(stress.BASE, stale=True))
+    sim.rungs = {"base": 100, "done": [False] * 4, "frozen": False}
+    sim.sales = [{"q": 1, "rebought": 0, "swept": 0, "day": 50, "price": 90.0,
+                  "levels": [{"price": 72, "usd": 45, "filled": False}, {"price": 54, "usd": 45, "filled": False}]}]
+    sim.end_of_day(169)                            # 119 days: too soon
+    assert sim.sales and sim.waiting() == 0
+    sim.end_of_day(170)                            # 120 days and price (100) above the sale (90)
+    assert sim.sales == [] and sim.waiting() == 90
+    sim2 = stress.Sim(s, 0, 199, dict(stress.BASE, stale=False))
+    sim2.rungs = sim.rungs
+    sim2.sales = [{"q": 1, "rebought": 0, "swept": 0, "day": 50, "price": 90.0,
+                   "levels": [{"price": 72, "usd": 45, "filled": False}]}]
+    sim2.end_of_day(170)
+    assert sim2.sales                               # rule off: money keeps waiting
+
+
+def test_stress_canadian_average_cost_tax():
+    s = st_series([(100, 100, 100, 100)] * 800)
+    sim = stress.Sim(s, 0, 799, stress.BASE)
+    sim.acb_buy(100.0, 1.0)
+    sim.acb_buy(200.0, 1.0)
+    sim.acb_sell(10, 300.0, 1.0)                   # average cost 150 -> gain 150 (2025)
+    close(sim.gains[2025], 150.0, 1e-9)
+    close(sim.acb_cost, 150.0, 1e-9)
+    sim.acb_sell(400, 50.0, 0.5)                   # 2026: 0.5 coin for $50 vs $75 cost = loss 25 ...
+    sim.gains[2027] = 100.0                        # ... carried into 2027: taxed on 75
+    r = sim.result()
+    close(r["tax"], (150 + 75) * 0.5 * stress.MARGINAL_TAX, 1e-9)
+
+
+def test_stress_cash_matched_benchmark():
+    close(stress.cash_matched({"coins": 10.0, "contributed": 1000.0}, 0.2, 100.0), 10.0, 1e-12)
+    close(stress.cash_matched({"coins": 10.0, "contributed": 1000.0}, 0.2, 50.0), 12.0, 1e-12)
+
+
+def test_stress_money_and_coins_add_up():
+    rng = random.Random(3)
+    rows, px = [], 100.0
+    for _ in range(1000):
+        o = px
+        px *= math.exp(rng.gauss(0.0005, 0.05))
+        rows.append((o, max(o, px) * 1.03, min(o, px) * 0.97, px))
+    s = st_series(rows)
+    for v in (stress.BASE, dict(stress.BASE, lots="month", core=0.5), dict(stress.BASE, lots="avg"),
+              dict(stress.BASE, bull=True, stale=True, core=0.7)):
+        sim = stress.Sim(s, 210, 940, v, record=True)
+        r = sim.run()
+        close(r["contributed"] - sum(e[3] for e in sim.events), r["waiting"], 0.01 + 0.005 * len(sim.events))
+        close(sum(e[4] for e in sim.events), r["coins"], 1e-6)
+        assert r["core"] >= 0 and r["trade"] >= -1e-12 and r["waiting"] >= -0.01
+        assert max(sim.month_buyins.values()) <= 3
+
+
+def test_history_parsers_and_cleaning():
+    cb = history.parse_coinbase([[1496534400, 224, 249.04, 224.95, 245.5, 212990.77]])
+    assert cb == [{"t": 1496534400, "o": 224.95, "h": 249.04, "l": 224.0, "c": 245.5, "v": 212990.77}]
+    bs = history.parse_bitstamp({"data": {"pair": "XRP/USD", "ohlc": [
+        {"timestamp": "1500000000", "open": "0.2", "high": "0.25", "low": "0.19", "close": "0.22", "volume": "1000"}]}})
+    assert bs[0]["o"] == 0.2 and bs[0]["c"] == 0.22 and bs[0]["t"] == 1500000000
+    D = 86400
+    good = lambda t, p: {"t": t, "o": p, "h": p * 1.1, "l": p * 0.9, "c": p, "v": 1}
+    rows = [good(0, 1)] + [good(20 * D + k * D, 2) for k in range(3)] + [good(26 * D, 3), good(26 * D, 3)]
+    rows.append({"t": 27 * D, "o": 3, "h": 3.3, "l": 3.2, "c": 3, "v": 1})     # low above the open: rejected
+    rows.append(good(28 * D, 4))
+    rows.append(good(29 * D, 9))                                                # unfinished day: dropped
+    cs, gaps = history.clean(rows, now=29 * D + 100)
+    assert len(gaps) == 1                                                       # the 20-day hole: older part dropped
+    assert cs[0]["t"] == 20 * D and cs[-1]["t"] == 28 * D
+    assert [c["t"] // D for c in cs] == list(range(20, 29))                     # short holes filled day by day
+    assert cs[3]["c"] == 2 and cs[3]["v"] == 0.0                                # a filled day repeats the last close
 
 
 # =================================================================== end to end

@@ -146,7 +146,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "4.2.0";
+const APP_VERSION = "4.3.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -342,6 +342,40 @@ function renderNews(){if(!DATA)return `<div class="card">Loading…</div>`;const
 
 const XP_HELP=`<div class="card" style="margin-bottom:14px"><b>How XP works</b><p class="small muted">+10 daily check-in · +15 core buy · +60 jumping out on a take-profit · +50 jumping in on a buy-back or dip rung · +100 finishing a 24h cooldown instead of panic-selling · +5 honestly logging that you didn't act · −30 off-plan trade (and your streak resets). XP rewards following your plan, not profit.</p></div>`;
 let BT=null,BT_ERR=null;
+let ST=null,ST_ERR=null;
+async function loadStress(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,"");const r=await fetch(base+"stress.json?t="+Date.now(),{cache:"no-store"});
+  if(!r.ok)throw new Error("HTTP "+r.status);ST=await r.json();ST_ERR=null;}catch(e){ST_ERR=String(e.message||e);}if(TAB==="backtest")render();}
+function vLabel(k){const m=Object.fromEntries(k.split(" ").map(x=>x.split("=")));
+  return `${m.lots==="buy"?"Each buy its own lot":m.lots==="month"?"One lot per month":"One average"} · ${m.core}% core${m.bull==="on"?" · bull mode":""}${m.stale==="on"?" · 120-day rule":""}`;}
+const sp=x=>x==null?"—":`<span class="${x>=0?"up":"dn"}">${pc(x)}</span>`;
+function renderStress(){if(!ST&&!ST_ERR){loadStress();return `<div class="card" style="margin-top:14px">Loading stress test…</div>`;}
+  if(!ST)return `<div class="card muted" style="margin-top:14px">No stress test published yet (${esc(ST_ERR)}). It runs once a day on GitHub.</div>`;
+  const A=ST.assumptions||{},O=ST.overall||[],D=ST.deep||{};
+  let h=`<div class="card" style="margin-top:14px"><b>🧪 Stress test: the v5 rules on up to 10 years of prices</b> <span class="small muted">· calculated ${new Date(ST.generated_at).toLocaleString()} · v${esc(ST.version)} · ${ST.seconds}s</span>
+    <p class="small muted" style="margin:6px 0 8px">${esc(A.money)}. ${esc(A.limits)}. Fees: ${esc(A.fees)}. Fills: ${esc(A.fills)}. Windows: ${esc(A.windows)}.<br>
+    <b>Cash-matched DCA</b> = ${esc(A.cash_matched)}. <b>Tax</b> = ${esc(A.tax)}.</p>
+    <p class="small" style="margin:0 0 8px">How to read it: a rule set is only worth using if it beats <b>cash-matched DCA</b> in most windows (not just plain DCA), holds up in <b>bull</b> windows, and its <b>bad case</b> (the worst 10% of windows) is something you can live with.</p>
+    <table><tr><th>Rules</th><th>Windows</th><th>Beat DCA</th><th>Beat cash-matched DCA</th><th>Median vs DCA</th><th>Bad case (10%)</th><th>Bull windows</th><th>Bear windows</th><th>After tax</th><th>Trades / month</th><th>Cash held</th></tr>
+    ${O.slice(0,12).map((r,i)=>`<tr style="${i===0?"background:#0f1f1a":""}"><td>${vLabel(r.variant)}${i===0?" 🏆":""}</td><td class="mono">${r.windows}</td><td class="mono">${r.beat_dca_pct}%</td><td class="mono"><b>${r.beat_cash_matched_pct}%</b></td>
+      <td class="mono">${sp(r.median_vs_dca_pct)}</td><td class="mono">${sp(r.p10_vs_dca_pct)}</td><td class="mono">${sp(r.bull_median_vs_dca_pct)} <span class="muted small">(${r.bull_windows})</span></td>
+      <td class="mono">${sp(r.bear_median_vs_dca_pct)} <span class="muted small">(${r.bear_windows})</span></td><td class="mono">${sp(r.after_tax_median_vs_dca_pct)}</td><td class="mono">${r.trades_per_month}</td><td class="mono">${r.cash_share_pct}%</td></tr>`).join("")}</table>
+    <details style="margin-top:6px"><summary class="small">All ${O.length} rule sets</summary><table>${O.map(r=>`<tr><td class="small">${vLabel(r.variant)}</td><td class="mono small">${r.beat_cash_matched_pct}%</td><td class="mono small">${sp(r.median_vs_dca_pct)}</td><td class="mono small">${sp(r.p10_vs_dca_pct)}</td><td class="mono small">${sp(r.bull_median_vs_dca_pct)}</td><td class="mono small">${sp(r.after_tax_median_vs_dca_pct)}</td></tr>`).join("")}</table></details></div>`;
+  h+=`<div class="card" style="margin-top:14px"><b>Is it skill or luck?</b>
+    <p class="small muted" style="margin:4px 0 8px">Random timing: ${esc(A.random)}. Bootstrap: ${esc(A.bootstrap)}. A real edge should beat random timing well over half the time, and win on most synthetic paths.</p>
+    <table><tr><th>Rules</th><th>Beat random timing</th><th>Synthetic paths beating DCA</th><th>Bad path (10%)</th><th>Typical path</th><th>Good path (90%)</th></tr>
+    ${Object.entries(D).map(([k,r])=>`<tr><td>${vLabel(k)}</td><td class="mono">${r.beat_random_timing_pct}%</td><td class="mono">${r.bootstrap_beat_dca_pct}% <span class="muted small">of ${r.bootstrap_paths}</span></td><td class="mono">${sp(r.bootstrap_p10_vs_dca_pct)}</td><td class="mono">${sp(r.bootstrap_median_vs_dca_pct)}</td><td class="mono">${sp(r.bootstrap_p90_vs_dca_pct)}</td></tr>`).join("")}</table></div>`;
+  const SE=ST.sensitivity||{};
+  h+=`<div class="card" style="margin-top:14px"><b>Do nearby settings hold up?</b> <span class="small muted">· using ${vLabel(SE.variant||"")}</span>
+    <p class="small muted" style="margin:4px 0 8px">If only one exact setting works, it's probably fitted to the past. Good rules stay decent when you nudge them.</p>
+    <table><tr><th>Setting</th><th>Beat cash-matched DCA</th><th>Median vs DCA</th><th>Bad case</th><th>Bull windows</th><th>After tax</th><th>Trades / month</th></tr>
+    ${(SE.tests||[]).map(r=>`<tr><td>${esc(r.test)}</td><td class="mono">${r.beat_cash_matched_pct}%</td><td class="mono">${sp(r.median_vs_dca_pct)}</td><td class="mono">${sp(r.p10_vs_dca_pct)}</td><td class="mono">${sp(r.bull_median_vs_dca_pct)}</td><td class="mono">${sp(r.after_tax_median_vs_dca_pct)}</td><td class="mono">${r.trades_per_month}</td></tr>`).join("")}</table></div>`;
+  for(const c of ST.coins||[]){
+    if(c.error){h+=`<div class="card" style="margin-top:14px"><b>${esc(c.symbol)}</b> <span class="muted small">skipped: ${esc(c.error)}</span></div>`;continue;}
+    const V=c.variants||{},best=O.length?V[O[0].variant]:null,ex=c.example;
+    h+=`<div class="card" style="margin-top:14px"><b style="font-size:18px">${esc(c.symbol)}</b> <span class="small muted">· ${esc(c.data.source)} · ${esc(c.data.from||"")} → ${esc(c.data.to||"")} · ${c.windows} windows${c.data.gaps_skipped?` · history before a ${c.data.gaps_skipped}-gap skipped`:""}</span>
+      ${best?`<div class="small" style="margin-top:6px">${vLabel(O[0].variant)}: beat DCA in <b>${best.beat_dca_pct}%</b> of windows, cash-matched DCA in <b>${best.beat_cash_matched_pct}%</b> · median ${sp(best.median_vs_dca_pct)} · bad case ${sp(best.p10_vs_dca_pct)} · bull ${sp(best.bull_median_vs_dca_pct)} (${best.bull_windows}) · bear ${sp(best.bear_median_vs_dca_pct)} (${best.bear_windows})</div>`:""}
+      ${ex?`<details style="margin-top:6px"><summary class="small">Every trade in the latest window (${ex.start} → ${ex.end}): ${qty(ex.score)} vs DCA ${qty(ex.dca)} coins, core ${qty(ex.core)}, ${money(ex.waiting)} waiting, est. tax ${money(ex.tax)}</summary><table>${ex.events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")}</table></details>`:""}</div>`;}
+  return h;}
 async function loadBacktest(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,"");const r=await fetch(base+"backtest.json?t="+Date.now(),{cache:"no-store"});
   if(!r.ok)throw new Error("HTTP "+r.status);BT=await r.json();BT_ERR=null;}catch(e){BT_ERR=String(e.message||e);}if(TAB==="backtest")render();}
 const BT_NAMES={app:"Crypto Coach (as built)",ladder_only:"Ladder only (no buy-early)",reanchor:"Ladder moves after trims",hybrid:"Half monthly + half deep ladder",
@@ -370,6 +404,7 @@ function renderBacktest(){if(!BT&&!BT_ERR){loadBacktest();return `<div class="ca
   let h=`<div class="card"><b>What would the rules have done?</b> <span class="small muted">· last ${BT.months} months · calculated ${new Date(BT.generated_at).toLocaleString()} · v${esc(BT.version)}</span>
     <p class="small muted" style="margin:8px 0 0">Start: ${esc(A.start||"")}. Fees: ${esc(A.fees||"")}. ${esc(A.fills||"")}. Not tested: ${esc(A.not_tested||"")}.<br>
     <b>Score = total value in coins</b>: coins held plus any cash converted at the final price, so selling high and holding cash counts fairly. <b>Ladder moves after trims</b> = after each trim the ladder restarts from the trim price, using the cash on hand. <b>Half monthly + half deep ladder</b> = half the reserve bought monthly, half on a −10/−25/−40/−55% ladder that also moves after trims; no buy-early.</p></div>`;
+  h+=renderStress();
   h+=renderAccumulate();
   if(BT.overall&&BT.overall.length){
     h+=`<div class="card" style="margin-top:14px"><b>Overall: which approach held up across all coins?</b>

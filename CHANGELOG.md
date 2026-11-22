@@ -4,6 +4,20 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 4.3.0 · 2026-11-22
+**Stress test on up to 10 years of prices.** Still a test only; live alerts don't change. Built from three independent reviews of the v5 strategy (see `STRATEGY.md`).
+- **Long history:** Coinbase daily prices (BTC, ETH, SOL, QNT) and Bitstamp (XRP, because Coinbase delisted it 2020-2023), back to 2016-17 where available. Checked for bad candles; short gaps filled, long gaps cut.
+- **Your real setup:** $500 to start, $100 a month, at most 3 buy-ins a month, $5 minimum order.
+- **Rolling 2-year windows** every 3 months, split into bull, bear and sideways windows.
+- **Fair benchmarks:** plain DCA, **cash-matched DCA** (same average cash, which checks the rules aren't just winning by holding cash in a crash), and **random buy timing**.
+- **Realistic costs:** 0.40% on market orders, 0.25% on resting limit orders, fills at the gap price, new orders wait a day.
+- **Canadian tax estimate:** average cost (ACB) per coin, 50% of gains at an assumed 30% rate.
+- **36 rule sets:** lots (each buy / monthly / one average) × core 40/50/70% × bull mode on/off × 120-day stale-cash rule on/off.
+- **Luck checks** on the leaders: random timing, plus synthetic 2-year paths stitched from real 30-day price chunks. **Sensitivity:** 30/60/90-day baseline, and sells at +15/+30 and +30/+60.
+- Runs once a day on GitHub (about 1-2 minutes, reused between runs). The workflow file changed (new step, longer time limit).
+- **Bug found by the new checks and fixed:** leftover coins too small to sell are now kept in Core instead of disappearing from the books.
+- 11 new tests (70 total).
+
 ## 4.2.0 · 2026-11-22
 **Stress test, plus the lots idea.** Still a test only; live alerts don't change.
 - **New model: A with lots.** Same dip-ladder buy-ins as A, but every buy (and every buy-back) is its own lot with its own +20/+40% take-profits, instead of one average for the whole trade bucket.
