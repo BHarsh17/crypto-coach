@@ -1071,6 +1071,36 @@ def test_myplan_sell_then_monthly_rollover():
     assert r["coins"] < r["dca_coins"]                                # sold at +20% and bought back higher: fewer coins
 
 
+def test_pivots_traditional_monthly():
+    rows = [(100, 100, 100, 100)] * 31
+    rows[10] = (100, 110, 90, 100)                                    # January: high 110, low 90, close 100
+    rows += [(100, 100, 100, 100)] * 28                               # February
+    piv = myplan.monthly_pivots(st_series(rows).d)
+    p, s1, s2 = piv["2025-02"]
+    close(p, 100.0, 1e-12)
+    close(s1, 90.0, 1e-12)                                            # 2P - H
+    close(s2, 80.0, 1e-12)                                            # P - (H - L)
+
+
+def test_pivot_hold_waits_fills_and_falls_back():
+    rows = [(100, 100, 100, 100)] * 31
+    rows[10] = (100, 110, 90, 100)                                    # Feb pivots: S1 90, S2 80
+    rows += [(100, 100, 99, 100)] * 9 + [(95, 96, 89, 92)] + [(100, 100, 99, 100)] * 18   # Feb 10: low 89 hits S1 only
+    rows += [(100, 100, 99, 100)] * 3                                 # Mar 1-3
+    d = st_series(rows).d
+    w = myplan.pivot_hold(d, amount=30.0, fallback=False)
+    f = myplan.pivot_hold(d, amount=30.0, fallback=True)
+    # Jan 1, Jan 15, Feb 1 money ($45 on S1) fills on Feb 10 at min(90, open 95) = 90
+    assert w["limit_fills"] == 1 and w["invested"] == 150.0           # 5 buy days incl. Mar 1
+    close(w["coins"], 45 * (1 - myplan.MAKER) / 90, 1e-12)
+    close(w["cash"], 150 - 45, 0.01)                                  # the S2 halves and later money keep waiting
+    # fallback: Feb 1 buys January's unfilled $60 (two deposits) at the open; Feb 10 fills Feb 1's $15 on S1 at 90;
+    # Mar 1 buys what's still waiting (Feb 1's S2 half + Feb 15's $30 = $45) at the open
+    assert f["market_buys"] == 2 and f["limit_fills"] == 1
+    close(f["coins"], 60 * (1 - myplan.TAKER) / 100 + 15 * (1 - myplan.MAKER) / 90 + 45 * (1 - myplan.TAKER) / 100, 1e-12)
+    close(f["cash"], 30.0, 0.01)                                      # only Mar 1's new money is still on its orders
+
+
 # =================================================================== end to end
 def test_end_to_end_offline_runs():
     root = os.path.join(HERE, "..")

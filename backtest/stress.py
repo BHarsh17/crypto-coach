@@ -671,8 +671,12 @@ def main():
     for sym in ("ETH", "SOL"):
         if sym in series:
             d_ = series[sym].d
-            r = myplan.replay(d_, amount=30.0, start=myplan.start_index(d_, 10))
-            mp["coins"][sym] = {k: (round(v, 8) if isinstance(v, float) else v) for k, v in r.items()}
+            st_ = myplan.start_index(d_, 10)
+            r = myplan.replay(d_, amount=30.0, start=st_)
+            rnd = lambda dd: {k: (round(v, 8) if isinstance(v, float) else v) for k, v in dd.items()}
+            mp["coins"][sym] = rnd(r)
+            mp["coins"][sym]["pivot_wait"] = rnd(myplan.pivot_hold(d_, amount=30.0, start=st_, fallback=False))
+            mp["coins"][sym]["pivot_fallback"] = rnd(myplan.pivot_hold(d_, amount=30.0, start=st_, fallback=True))
     if mp["coins"]:
         mp["total"] = {k: round(sum(c[k] for c in mp["coins"].values()), 2) for k in ("invested", "value", "dca_value", "cash")}
     doc_myplan = mp

@@ -189,3 +189,62 @@ def replay(daily, amount=10.0, days=(1, 15), core=0.7, bull=True, start=0):
 def start_index(daily, years):
     t0 = daily[-1]["t"] - int(years * 365.25 * 86400)
     return next((i for i, c in enumerate(daily) if c["t"] >= t0), 0)
+
+
+def monthly_pivots(daily):
+    """Traditional pivots for each month from the PREVIOUS calendar month's high, low and close
+    (what TradingView's 'Pivots Traditional' shows on a monthly anchor). month -> (P, S1, S2)."""
+    by_m = {}
+    for c in daily:
+        m = _d(c["t"]).strftime("%Y-%m")
+        b = by_m.setdefault(m, {"h": c["h"], "l": c["l"], "c": c["c"]})
+        b["h"], b["l"], b["c"] = max(b["h"], c["h"]), min(b["l"], c["l"]), c["c"]
+    ms = sorted(by_m)
+    out = {}
+    for prev, cur in zip(ms, ms[1:]):
+        h, l, c = by_m[prev]["h"], by_m[prev]["l"], by_m[prev]["c"]
+        p = (h + l + c) / 3
+        out[cur] = (p, 2 * p - h, p - (h - l))
+    return out
+
+
+def pivot_hold(daily, amount=30.0, days=(1, 15), start=0, fallback=False):
+    """Buy-and-hold, but each buy day's money waits as two limit orders: half at S1, half at S2.
+    fallback=False: unfilled money moves to the new month's S1/S2 and keeps waiting.
+    fallback=True: money still unfilled when a new month starts is bought at market at that open."""
+    piv = monthly_pivots(daily)
+    coins = cash_s1 = cash_s2 = invested = fees = 0.0
+    fills = market = 0
+    for i in range(start, len(daily)):
+        c = daily[i]
+        dt = _d(c["t"])
+        m = dt.strftime("%Y-%m")
+        new_month = i > start and m != _d(daily[i - 1]["t"]).strftime("%Y-%m")
+        if new_month and fallback and cash_s1 + cash_s2 >= MIN_ORDER:
+            usd = cash_s1 + cash_s2
+            coins += usd * (1 - TAKER) / c["o"]
+            fees += usd * TAKER
+            cash_s1 = cash_s2 = 0.0
+            market += 1
+        lv = piv.get(m)
+        if lv and i > start:                       # orders placed before today can fill today
+            for side in ("s1", "s2"):
+                px = lv[1] if side == "s1" else lv[2]
+                pool = cash_s1 if side == "s1" else cash_s2
+                if pool >= MIN_ORDER and px > 0 and c["l"] <= px:
+                    fill = min(px, c["o"])
+                    coins += pool * (1 - MAKER) / fill
+                    fees += pool * MAKER
+                    fills += 1
+                    if side == "s1":
+                        cash_s1 = 0.0
+                    else:
+                        cash_s2 = 0.0
+        if dt.day in days:                         # new money goes onto the orders (fills from tomorrow)
+            invested += amount
+            cash_s1 += amount / 2
+            cash_s2 += amount / 2
+    px = daily[-1]["c"]
+    cash = cash_s1 + cash_s2
+    return {"invested": round(invested, 2), "coins": coins, "cash": round(cash, 2),
+            "value": round(coins * px + cash, 2), "fees": round(fees, 2), "limit_fills": fills, "market_buys": market}
