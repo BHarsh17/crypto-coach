@@ -1,6 +1,6 @@
 # Crypto Coach
 
-**Version:** see `VERSION` (currently 4.1.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+**Version:** see `VERSION` (currently 4.2.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
 
 **Your rules, not your gut.** Crypto Coach keeps a set of buy and sell orders for each coin, watches the price around the clock, and pings your phone the moment one is reached: **🔴 JUMP OUT** (take profit), **🟢 JUMP IN** (buy back or buy the dip), or **🟡 HEADS UP** (something's going on). You still make every trade. It just makes sure the plan gets followed instead of the panic.
 
@@ -77,7 +77,7 @@ There are two parts. One does the thinking, the other shows it to you.
 
 Each run of the workflow (`.github/workflows/watch.yml`) does this, in order:
 
-1. **Self-test** (`tests/test_watch.py`, 57 checks in three layers):
+1. **Self-test** (`tests/test_watch.py`, 59 checks in three layers):
    - **Reference values:** RSI against a published worked example and a hand-worked one, plus averages, percentages and funding maths.
    - **Cross-checks:** a second, independently written RSI and average compared on hundreds of random price series. They must agree to 8 decimal places.
    - **Scenarios:** every flag, bottom signal, ladder rung and alert tested right at its on/off boundary, the news counting and hype maths, and two full offline runs back to back (checking nothing is double-counted).
@@ -314,9 +314,10 @@ The Backtest tab also answers *"when should I buy in?"* It starts with nothing, 
 |---|---|
 | **A** | Dip ladder: limit buys −10/−25/−40/−55% below the 30-day high |
 | **B** | Washed out (3+ strict, or 2+ loose, bottom signals in the last 14 days) **and** price closes back above its 20-day average. Buys at the next day's open |
+| **A lots** | Same as A, but every buy is its own lot with its own +20/+40% take-profits |
 | **C** | Monthly DCA. The benchmark |
 
-In A and B, every buy puts 40% into **Core** (never sold) and runs the +20/+40% take-profit ladder on the rest. When buy-backs get back more coins than were sold, the extra coins move to Core. Monthly money that no signal used within 60 days is bought anyway. A model only counts if it beats C on most coins **and** in both halves of the period. This is a test only: live alerts don't change until a model earns it.
+In A and B, every buy puts 40% into **Core** (never sold) and runs the +20/+40% take-profit ladder on the rest. When buy-backs get back more coins than were sold, the extra coins move to Core. Monthly money that no signal used within 60 days is bought anyway. Orders under $5 aren't placed. **Stress test:** every model also starts 3, 6 and 9 months later, and each half of the period runs on its own. A model only counts if it beats C on most coins, start dates and halves. This is a test only: live alerts don't change until a model earns it.
 
 ---
 
@@ -325,7 +326,7 @@ In A and B, every buy puts 40% into **Core** (never sold) and runs the +20/+40% 
 **No AI calculates any number or sets any flag.** Everything is plain, tested arithmetic on Kraken's data, fixed keyword rules on fixed news outlets, and CoinGecko's trending list.
 
 **On GitHub (watcher):**
-- **Maths self-test before every run** (57 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtests). If it fails, nothing is published.
+- **Maths self-test before every run** (59 checks: reference values, independent cross-checks, every signal and order at its exact boundary, the orders engine, the backtests). If it fails, nothing is published.
 - **One engine for live and backtest:** the orders you're alerted on come from the same code (`watcher/engine.py`) the backtest replays, so what you were shown in testing is what runs live.
 - **News safety:** headlines are de-duplicated across runs, never counted twice, and articles dated in the future are treated as "now". Only web links (`http`/`https`) are kept from feeds. If every news feed fails, flag 5 stays off for that run rather than guessing.
 - **Bad data is rejected,** never used. A coin is rejected if Kraken returns fewer than 30 candles, candles out of time order, an impossible candle (low above the open or close, or high below them), or a latest candle that's too old.

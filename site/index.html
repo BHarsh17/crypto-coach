@@ -146,7 +146,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "4.1.0";
+const APP_VERSION = "4.2.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -349,15 +349,17 @@ const BT_NAMES={app:"Crypto Coach (as built)",ladder_only:"Ladder only (no buy-e
   yours_10_20:"Your method: TP +10/+20%, rebuy −10/−20%",yours_20_40:"Your method: TP +20/+40%, rebuy −20/−40%",yours_30_60:"Your method: TP +30/+60%, rebuy −30/−60%",
   proposed:"Proposed tweaks",dca:"Monthly DCA",lump:"All-in on day 1",cash:"Keep the cash"};
 const score=r=>r.coin_equiv!=null?r.coin_equiv:r.coins;
-const ACC_NAMES={A:"A · Dip ladder (−10/25/40/55% below the 30-day high)",B_strict:"B · Washed out (3+) and turning up",B_loose:"B · Washed out (2+) and turning up",dca:"C · Monthly DCA (benchmark)"};
+const ACC_NAMES={A:"A · Dip ladder, one average for the trade bucket",A_lots:"A · Dip ladder, every buy its own lot",B_strict:"B · Washed out (3+) and turning up",B_loose:"B · Washed out (2+) and turning up",dca:"C · Monthly DCA (benchmark)"};
+function coinsAcc(){return (BT.coins||[]).filter(c=>c.accumulate);}
 function renderAccumulate(){const O=BT.accumulate_overall,AA=BT.accumulate_assumptions;if(!O||!O.length)return "";
   const coins=BT.coins.filter(c=>c.accumulate);const a0=coins[0].accumulate;
   let h=`<div class="card" style="margin-top:14px"><b>Accumulate from zero: which buy-in signal works?</b> <span class="small muted">· ${a0.start} → ${a0.end} (${a0.days} days)</span>
     <p class="small muted" style="margin:4px 0 8px">${esc(AA.money)}. ${esc(AA.split)}. ${esc(AA.ladder)}. ${esc(AA.signals)}. Money no signal used within 60 days is bought anyway.
-    A model has to beat <b>C</b> on most coins <b>and</b> in both halves of the period to be worth the effort. Winning one half only = luck.</p>
-    <table><tr><th>Buy-in signal</th><th>Coins beating DCA</th><th>Halves beating DCA</th><th>Average vs DCA</th><th>Worst coin</th></tr>
-    ${O.map(r=>`<tr><td>${ACC_NAMES[r.strategy]||r.strategy}</td><td class="mono">${r.coins_beating_dca} / ${r.coins}</td><td class="mono">${r.halves_beating_dca} / ${r.halves}</td><td class="mono ${r.avg_vs_dca_pct>=0?"up":"dn"}">${pc(r.avg_vs_dca_pct)}</td><td class="mono ${r.worst_vs_dca_pct>=0?"up":"dn"}">${pc(r.worst_vs_dca_pct)}</td></tr>`).join("")}</table>
-    <table style="margin-top:10px"><tr><th>Coin</th>${Object.keys(ACC_NAMES).map(k=>`<th>${k==="dca"?"C":k.replace("_"," ")}</th>`).join("")}</tr>
+    Orders under $5 aren't placed. <b>Stress test:</b> each model also starts 3, 6 and 9 months later, and each half of the period is run on its own.
+    A model has to beat <b>C</b> on most coins, start dates and halves to be worth the effort. Winning one stretch only = luck.</p>
+    <table><tr><th>Buy-in signal</th><th>Coins beating DCA</th><th>Start dates beating DCA</th><th>Halves beating DCA</th><th>Average vs DCA</th><th>Worst coin</th><th>Worst of any start</th><th>Trades</th></tr>
+    ${O.map(r=>{const tr=coinsAcc().reduce((n,c)=>n+c.accumulate.results[r.strategy].buys+c.accumulate.results[r.strategy].sells,0);return `<tr><td>${ACC_NAMES[r.strategy]||r.strategy}</td><td class="mono">${r.coins_beating_dca} / ${r.coins}</td><td class="mono">${r.starts!=null?r.starts_beating_dca+" / "+r.starts:"—"}</td><td class="mono">${r.halves_beating_dca} / ${r.halves}</td><td class="mono ${r.avg_vs_dca_pct>=0?"up":"dn"}">${pc(r.avg_vs_dca_pct)}</td><td class="mono ${r.worst_vs_dca_pct>=0?"up":"dn"}">${pc(r.worst_vs_dca_pct)}</td><td class="mono ${(r.starts_worst_pct||0)>=0?"up":"dn"}">${r.starts_worst_pct!=null?pc(r.starts_worst_pct):"—"}</td><td class="mono">${tr}</td></tr>`}).join("")}</table>
+    <table style="margin-top:10px"><tr><th>Coin</th>${Object.keys(ACC_NAMES).map(k=>`<th>${k==="dca"?"C":k==="A_lots"?"A lots":k.replace("_"," ")}</th>`).join("")}</tr>
     ${coins.map(c=>{const R=c.accumulate.results,dca=R.dca.coin_equiv;return `<tr><td><b>${esc(c.symbol)}</b></td>${Object.keys(ACC_NAMES).map(k=>{const r=R[k];if(!r)return "<td>—</td>";
       return `<td class="mono small">${qty(r.coin_equiv)}${k==="dca"?"":` <span class="${r.coin_equiv>=dca?"up":"dn"}">${pc((r.coin_equiv/dca-1)*100)}</span>`}<br><span class="muted">core ${qty(r.core)} · ${r.buys} buys · ${r.sells} sells${r.cash>0.5?` · ${money(r.cash)} waiting`:""}</span></td>`}).join("")}</tr>`}).join("")}</table>
     <div class="small muted" style="margin-top:4px">Score = coins + cash still waiting, converted at the final price. "Core" = coins you keep for good. Same money into every model: ${money(a0.results.dca.contributed)} per coin.</div></div>`;

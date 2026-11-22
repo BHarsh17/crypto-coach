@@ -820,6 +820,38 @@ def test_acc_money_waits_at_most_60_days():
     close(first[3], 100.0, 1e-9)                       # only January's money was that old
 
 
+def test_acc_lots_each_buy_has_its_own_take_profits():
+    b = acc.LotBook()
+    b.cash = 2000.0
+    b.cash_lots = [[0, 2000.0]]
+    b.buy_in(1000, 100, T0, "lot 1")
+    b.buy_in(1000, 80, T0, "lot 2")
+    b.end_day()
+    tps = sorted(px for kind, ref, px in b.orders() if kind == "tp")
+    c1 = 600 / (1000 * (1 - acc.FEE) / 100 * 0.6)       # lot cost per coin, fee included
+    c2 = 600 / (1000 * (1 - acc.FEE) / 80 * 0.6)
+    for got, want in zip(tps, sorted([c1 * 1.2, c1 * 1.4, c2 * 1.2, c2 * 1.4])):
+        close(got, want, 1e-9)
+    # price reaches only the cheap lot's +20%: only that lot sells, half of it
+    q2 = 1000 * (1 - acc.FEE) / 80 * 0.6
+    trade0 = b.trade
+    b.fill(b.orders(), {"t": T0 + 86400, "h": c2 * 1.25, "l": c2 * 1.1})
+    assert b.sells == 1
+    close(trade0 - b.trade, q2 / 2, 1e-12)
+
+
+def test_acc_minimum_order_size():
+    b = acc.Book()
+    b.cash = 4.0
+    b.cash_lots = [[0, 4.0]]
+    b.buy_in(4.0, 10, T0, "too small")
+    assert b.buys == 0 and b.cash == 4.0                  # under $5 isn't bought
+    lv = acc.Book.buyback_levels(100.0, 8.0)                # $4 halves would be too small -> one order with all $8
+    assert len(lv) == 1 and lv[0]["usd"] == 8.0
+    close(lv[0]["price"], 80.0, 1e-12)
+    assert len(acc.Book.buyback_levels(100.0, 20.0)) == 2
+
+
 def test_acc_money_and_coins_add_up():
     rng = random.Random(7)
     rows, px = [], 100.0
@@ -831,7 +863,7 @@ def test_acc_money_and_coins_add_up():
     for m in acc.MODELS:
         r = acc.run(d, 40, 499, lambda i: ([], ["x"] * (i % 4)), m)
         spent = sum(e[3] for e in r["events"])
-        close(r["contributed"] - spent, r["cash"], 0.02)        # every dollar is either spent or still waiting
+        close(r["contributed"] - spent, r["cash"], 0.01 + 0.005 * len(r["events"]))  # every dollar spent or waiting (cent rounding per trade)
         coins = sum(e[4] for e in r["events"] if not e[1].startswith("Gain"))
         close(coins, r["coins"], 1e-6)                           # every coin came from a logged trade
         assert r["core"] >= -1e-12 and r["trade"] >= -1e-12 and r["cash"] >= -0.01

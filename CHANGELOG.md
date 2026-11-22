@@ -4,6 +4,13 @@ The version number lives in `VERSION`. The app shows it in its footer and warns 
 
 Numbering: **major.minor.patch**. Major = a change to how the rules work. Minor = a new feature. Patch = a fix or a tidy-up.
 
+## 4.2.0 · 2026-11-22
+**Stress test, plus the lots idea.** Still a test only; live alerts don't change.
+- **New model: A with lots.** Same dip-ladder buy-ins as A, but every buy (and every buy-back) is its own lot with its own +20/+40% take-profits, instead of one average for the whole trade bucket.
+- **Stress test:** every model also runs starting 3, 6 and 9 months later. The overall table shows how many start dates beat DCA, the worst result from any start, and how many trades each model needs.
+- **Realism:** orders under $5 aren't placed (Kraken has minimums). If half a sale's money is under $5, it goes into one buy-back at −20% instead of two.
+- 2 new tests (59 total): lots sell at their own prices; the $5 minimum.
+
 ## 4.1.0 · 2026-11-22
 **New test (no change to live alerts yet): accumulate from zero.** The Backtest tab now has a section comparing three ways to decide *when to buy in*, starting with nothing and adding $100 every month, over as much history as Kraken gives (about 22 months):
 - **A · Dip ladder:** limit buys −10/−25/−40/−55% below the 30-day high.
