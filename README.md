@@ -1,5 +1,7 @@
 # Crypto Coach
 
+**Version:** see `VERSION` (currently 3.0.0) · **What changed:** see `CHANGELOG.md`. The app shows its version and the watcher's in its footer, and warns if they differ.
+
 **Your rules, not your gut.** Crypto Coach watches your coins, checks them against rules you set ahead of time, and tells you what those rules say to do: hold, buy a dip rung, trim a pump, or follow a stop. You still make every trade. It just makes sure the plan gets followed instead of the panic.
 
 > These are rule-based signals, not predictions or financial advice. They can't promise what the market will do. They make sure *your* plan gets followed.
@@ -11,14 +13,14 @@
 2. [What happens on GitHub](#2-what-happens-on-github)
 3. [What happens in the app](#3-what-happens-in-the-app)
 4. [The 6 top-warning flags](#4-the-6-top-warning-flags)
-5. [The 3 bottom signals](#5-the-3-bottom-signals)
+5. [The 6 bottom signals](#5-the-6-bottom-signals)
 6. [The dip ladder](#6-the-dip-ladder)
 7. [Buckets, trims and the trailing stop](#7-buckets-trims-and-the-trailing-stop)
 8. [How a coin's mission is chosen](#8-how-a-coins-mission-is-chosen)
 9. [Telegram alerts](#9-telegram-alerts)
    - [The News tab](#the-news-tab)
 10. [Trust guards: how it avoids false info](#10-trust-guards-how-it-avoids-false-info)
-11. [The game: XP, levels, badges](#11-the-game-xp-levels-badges)
+11. [The game: XP and levels](#11-the-game-xp-and-levels)
 12. [What's public, what's private](#12-whats-public-whats-private)
 13. [Changing things](#13-changing-things)
 14. [Setup (first time)](#14-setup-first-time)
@@ -117,8 +119,7 @@ The app is one web page (`site/index.html`). Open it at **https://bharsh17.githu
 - **Missions tab:** one card per coin, showing the live price, a chart, **one mission** (what your rules say right now), the flags, the bottom signals, the dip ladder and your buckets.
 - **News tab:** the hype meter and every headline the watcher matched to your coins (see [The News tab](#the-news-tab)).
 - **Dip reserve tab:** your cash pool for buying dips, how much each coin has used, and a **list of limit orders to place** on your exchange.
-- **Journal tab:** everything you've logged, with XP.
-- **Badges tab:** what you've earned, and how XP works.
+- **Journal tab:** how XP works, then everything you've logged, with XP.
 - **Setup tab:** your holdings, average cost, dip reserve and backup.
 - **😰 I want to sell:** shows your rules and offers a 24-hour cooldown instead of a panic sale.
 - **Charts:** tap a card's chart or 📈 Chart. You get live candles with the 20/50/200 averages, ladder rungs, trailing stop and your average cost drawn on. **Make decisions on 1D, check the big picture on 1W.** 1H and 4H are for watching, not acting.
@@ -198,28 +199,40 @@ Tap the **News priced in** or **Social FOMO** chip on a coin card to override it
 | **4–5** | Level 2 | Trim to **50%** total |
 | **6** | Level 3 | Trim to **75%** total. The last 25% is your **moonbag**, protected by the trailing stop. |
 
-## 5. The 3 bottom signals
+### Top flags vs. bottom signals
+There are 6 of each, built as mirror images, with the same 3 / 4–5 / 6 levels. Buying never *waits* for bottom signals: your core buys run on a schedule and ladder rungs fill on price alone. Bottom signals only tell you to buy the next rung **early**.
 
-These are the opposite of the flags. They light up (blue dot) when a coin looks **washed out**, a historically good area to be accumulating.
+**Top flags = trim (sell part of the trade bucket). Bottom signals = buy the next ladder rung early.** Neither ever touches your core.
 
-### Near the 200-week average 🧊
-**ON when:** the price is **at or below 10% above the 200-week average** (below it counts too).
-**Why:** in past cycles, major bear markets have bottomed near this line.
-*Setting: `near_200w_pct`*
+## 5. The 6 bottom signals
 
-### Weekly RSI cold 🥶
-**ON when:** **weekly RSI ≤ 30**.
-**Why:** readings this low have tended to show up near major lows.
-*Setting: `rsi_weekly_cold`*
+These are the buy-side mirror of the top flags. Each one lights up (blue dot) when a coin looks **washed out**, and each matches a top flag pointing the other way:
 
-### Capitulation volume 🏳️
-**ON when:** in any of the **last 3 completed days**, a day closed **≥ 5% below its open** on **≥ 2.5× the average volume** of the 30 days before it.
-**Why:** huge volume on a big red day often means panicked sellers are giving up, and that tends to mark a low.
-*Settings: `capitulation_volume_x`, `capitulation_drop_pct`*
+| Bottom signal | ON when | Mirror of |
+|---|---|---|
+| **Freefall** 🪂 | down **≥ 25% in 7 days** *or* **≥ 45% in 30 days** | Vertical move |
+| **Stretched below** 🪢 | **≥ 25% below the 50-day average** *or* **≥ 20% below the 20-day average** | Stretched |
+| **Oversold RSI** 🥶 | **daily RSI ≤ 25** *or* **weekly RSI ≤ 30** | Extreme RSI |
+| **Shorts crowded** 🐻 | **funding ≤ −0.01% per 8 hours** (traders paying to bet on a fall; crowded shorts often get squeezed) | Leverage piling in |
+| **Capitulation volume** 🏳️ | in any of the **last 3 completed days**, a day closed **≥ 5% below its open** on **≥ 2.5× the 30-day average volume** | News priced in / FOMO (the panic version) |
+| **Near 200-week average** 🧊 | price **at or below 10% above the 200-week average** (past bear markets bottomed near it) | — (long-cycle floor) |
 
-**2 or more on** gives the **Accumulation zone** mission: keep core buys running and keep your ladder orders in place.
+*Settings: `freefall_7d_pct`, `freefall_30d_pct`, `stretched_down_ma50_pct`, `stretched_down_ma20_pct`, `rsi_daily_cold`, `rsi_weekly_cold`, `funding_cold_8h`, `capitulation_volume_x`, `capitulation_drop_pct`, `near_200w_pct`*
 
----
+### The buy-early rule
+Your ladder already buys when the price falls to each rung. Bottom signals add one thing: **buy the next rung early**, before the price gets there, because several independent signs say the coin is washed out.
+
+| Bottom signals on | Level | Your rule |
+|---|---|---|
+| 0–2 | — | Wait. Ladder orders stay in place; core buys continue. |
+| **3** | Level 1 | Buy your **next ladder rung now** |
+| **4–5** | Level 2 | Buy up to your **next 2 rungs** in total |
+| **6** | Level 3 | Buy up to your **next 3 rungs** in total (the last rung stays as a reserve) |
+
+- The dollar amount is exactly what those rungs would have spent, so it's never more than that coin's share of your dip reserve.
+- Rungs bought early are marked done, so a limit order for them should be cancelled on your exchange. The *Dip reserve* tab only lists rungs you still need.
+- Each level fires once per ladder. A new ladder anchor resets it.
+- If the price reaches a rung on its own, that buy comes first.
 
 ## 6. The dip ladder
 
@@ -289,7 +302,7 @@ The app checks these **in order** and shows the first one that applies:
 | 3 | 🛑 **Trailing stop hit** | Section 7 |
 | 4 | 🔥 **Trim** | 3+ of the 6 flags and a higher level than you've already trimmed. With no trade bucket, it becomes a "don't chase it" warning instead. |
 | 5 | 🪜 **Ladder rung reached** | A reached rung you haven't logged yet |
-| 6 | 🧊 **Accumulation zone** | 2+ bottom signals |
+| 6 | 🧊 **Buy early** | 3+ of the 6 bottom signals and a higher level than you've already bought at (section 5) |
 | 7 | 👀 **Hold · N/6 flags** | 1–2 flags: watch, don't act |
 | 8 | ✅ **Hold** | Nothing triggered. Doing nothing *is* the move. |
 
@@ -306,7 +319,7 @@ The watcher sends a message **only when something changes**, never the same aler
 | ✅ Watcher is live | The very first run |
 | 🔥 Top flags | The flag count reaches a higher level: 3, then 4, then 6 |
 | 🪜 Ladder rung | A rung is reached for the first time |
-| 🧊 Bottom signals | Bottom signals go from under 2 to **2 or more** |
+| 🧊 Bottom signals | The bottom-signal count reaches a higher level: 3, then 4, then 6 |
 
 There's no Telegram alert for the trailing stop, because it depends on when *you* trimmed, which only your app knows. The app's mission shows it instantly.
 
@@ -353,7 +366,7 @@ No official feed was available for Ripple, so XRP is covered by the five outlets
 
 ---
 
-## 11. The game: XP, levels, badges
+## 11. The game: XP and levels
 
 XP rewards **following your rules**, not making money. Profit is the market's job; discipline is yours.
 
@@ -370,7 +383,6 @@ XP rewards **following your rules**, not making money. Profit is the market's jo
 
 **Levels:** Paper Hands (0) → Rookie Stacker (150) → Ladder Climber (400) → Rule Follower (800) → Steel Core (1,400) → Cycle Rider (2,200) → Diamond Discipline (3,200).
 
-**Badges:** 👋 Showed Up · 🔥 7-Day Streak · 🪜 First Rung · 🏔️ Full Ladder (all 4 rungs on one coin) · 💸 Took Profit · 🌙 Moonbag Rules · 🧊 Held the Line · 💎 Untouched Core (30 days, no off-plan trades).
 
 ---
 

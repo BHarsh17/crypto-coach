@@ -37,20 +37,23 @@ nav button.on{color:var(--text);border-color:var(--blue);background:#132140}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;position:relative}
 .coinhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .sym{font-size:20px;font-weight:700}
-.nm{color:var(--muted);font-size:12px}
-.px{text-align:right}
-.px b{font-size:18px}
+.nm{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.px{text-align:right;flex:none}
+.px .small{line-height:1.5}
+.px b{font-size:18px;display:inline-block;min-width:8ch}
+.mono,.px,.rung b,.bk b{font-variant-numeric:tabular-nums}
 .up{color:var(--green)}.dn{color:var(--red)}
-.mission{margin:12px 0;border-radius:12px;padding:12px;border:1px solid}
+.mission{margin:12px 0;border-radius:12px;padding:12px;border:1px solid;height:196px;display:flex;flex-direction:column;overflow:hidden}
+.mission .btns{margin-top:auto;padding-top:8px}
 .mission .k{font-size:11px;letter-spacing:1.5px;font-weight:700;text-transform:uppercase}
-.mission .t{font-size:15px;margin-top:4px;line-height:1.35}
+.mission .t{font-size:15px;margin-top:4px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .m-hold{background:#0f1f1a;border-color:#1f4a3a}.m-hold .k{color:var(--green)}
 .m-buy{background:#0e1a2c;border-color:#24477a}.m-buy .k{color:var(--blue)}
 .m-trim{background:#2a1418;border-color:#6a2635}.m-trim .k{color:var(--red)}
 .m-stop{background:#2a1a0c;border-color:#6b4317}.m-stop .k{color:var(--amber)}
 .m-zone{background:#0d2228;border-color:#1f5560}.m-zone .k{color:var(--ice)}
 .m-wait{background:#171b26;border-color:var(--line)}.m-wait .k{color:var(--muted)}
-.why{font-size:12px;color:var(--muted);margin-top:6px}
+.why{font-size:12px;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 button.b{font:inherit;font-size:13px;border-radius:9px;padding:7px 12px;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--text)}
 button.b.pri{background:var(--blue);border-color:var(--blue);color:#06121b;font-weight:600}
@@ -63,7 +66,7 @@ button.b:disabled{opacity:.45;cursor:default}
 .chip .d{width:9px;height:9px;border-radius:50%;margin-top:4px;flex:none;background:#2d3650}
 .chip.on{border-color:#6a2635;background:#1e1016}.chip.on .d{background:var(--red);box-shadow:0 0 8px var(--red)}
 .chip.bon{border-color:#1f5560;background:#0c1d22}.chip.bon .d{background:var(--ice);box-shadow:0 0 8px var(--ice)}
-.chip small{display:block;color:var(--muted);font-size:10.5px;margin-top:2px}
+.chip small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:10.5px;margin-top:2px;min-height:2.6em}
 .chip.man{cursor:pointer}
 .chip.man:hover{border-color:#47557a}
 .meter{display:flex;gap:4px;margin-top:4px}
@@ -90,12 +93,6 @@ input,select,textarea{font:inherit;background:#0c111d;border:1px solid var(--lin
 label{font-size:12px;color:var(--muted);display:block;margin:8px 0 4px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-.badge{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;text-align:center;opacity:.4;filter:grayscale(1)}
-.badge.got{opacity:1;filter:none;border-color:#47557a}
-.badge .ic{font-size:30px}
-.badge b{display:block;margin-top:6px}
-.badge small{color:var(--muted)}
 .modal{position:fixed;inset:0;background:rgba(3,6,12,.75);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
 .modal.open{display:flex}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:520px;width:100%;padding:18px;max-height:90vh;overflow:auto}
@@ -119,8 +116,6 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 .ivs button.on{border-color:var(--blue);background:#132140}
 .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
 .legend span:before{content:"";display:inline-block;width:14px;height:3px;margin-right:5px;vertical-align:middle;background:var(--c)}
-.flash{animation:flash .6s}
-@keyframes flash{from{background:#24477a55}to{background:transparent}}
 @media (max-width:520px){.player{min-width:0;width:100%}.xpbar{width:120px}.three{grid-template-columns:1fr 1fr}}
 </style>
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
@@ -140,7 +135,6 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
     <button data-t="reserve">💰 Dip reserve</button>
     <button data-t="journal">📓 Journal</button>
     <button data-t="news">📰 News</button>
-    <button data-t="badges">🏅 Badges</button>
     <button data-t="setup">⚙️ Setup</button>
   </nav>
   <main id="view"></main>
@@ -151,6 +145,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
+const APP_VERSION = "3.0.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -162,23 +157,15 @@ const FLAG_INFO = {
   news:{n:"News priced in",h:"Real catalyst, all in days",ov:true},
   fomo:{n:"Social FOMO",h:"Trending + hype headlines",ov:true}
 };
-const BOTTOM_INFO = {near_200w:"Near 200-week avg", rsi_cold:"Weekly RSI cold", capitulation:"Capitulation volume"};
+const BOTTOM_INFO = {freefall:"Freefall", stretched_down:"Stretched below", oversold:"Oversold RSI",
+  shorts_crowded:"Shorts crowded", capitulation:"Capitulation volume", near_200w:"Near 200-week avg"};
+const NBOTTOMS = Object.keys(BOTTOM_INFO).length;
 const LEVELS = [[0,"Paper Hands"],[150,"Rookie Stacker"],[400,"Ladder Climber"],[800,"Rule Follower"],[1400,"Steel Core"],[2200,"Cycle Rider"],[3200,"Diamond Discipline"]];
-const BADGES = [
-  ["showed_up","👋","Showed Up","First check-in"],
-  ["streak7","🔥","7-Day Streak","Checked in 7 days running"],
-  ["first_rung","🪜","First Rung","Bought a ladder rung"],
-  ["full_ladder","🏔️","Full Ladder","All 4 rungs on one coin"],
-  ["took_profit","💸","Took Profit","Trimmed on flags"],
-  ["moonbag","🌙","Moonbag Rules","Followed a trailing stop"],
-  ["held_line","🧊","Held the Line","Finished a 24h cooldown"],
-  ["clean30","💎","Untouched Core","30 days, no off-plan trades"]
-];
 
 let S = load();
 let DATA = null, IS_DEMO = false, TAB = "missions", FETCH_ERR = null, NEWSF = {coin:"all",tag:"all"};
 
-function blank(){return {xp:0,log:[],badges:{},streak:{last:null,count:0,best:0},startedAt:Date.now(),lastOffPlan:null,
+function blank(){return {xp:0,log:[],streak:{last:null,count:0,best:0},startedAt:Date.now(),lastOffPlan:null,
   reserve:{total:0,alloc:{}},spent:{},coins:{},settings:{dataUrl:"signals.json",repoUrl:""},panic:null};}
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.coins)return Object.assign(blank(),s);}catch(e){}return blank();}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
@@ -196,12 +183,10 @@ function level(){let i=0;LEVELS.forEach((l,k)=>{if(S.xp>=l[0])i=k;});return i;}
 function addXP(n,text,coin,type){S.xp=Math.max(0,S.xp+n);S.log.unshift({ts:Date.now(),type:type||"info",coin:coin||"",text,xp:n});S.log=S.log.slice(0,300);
   const before=level();save();toast((n>=0?"+":"")+n+" XP · "+text.split(".")[0]);
   if(level()>before)setTimeout(()=>toast("⬆️ Level up: "+LEVELS[level()][1]),1400);}
-function badge(id){if(!S.badges[id]){S.badges[id]=Date.now();save();const b=BADGES.find(x=>x[0]===id);setTimeout(()=>toast("🏅 Badge: "+b[2]),900);}}
 function checkIn(){const t=today();if(S.streak.last===t)return false;
   const y=new Date(Date.now()-864e5).toISOString().slice(0,10);
   S.streak.count=S.streak.last===y?S.streak.count+1:1;S.streak.best=Math.max(S.streak.best,S.streak.count);S.streak.last=t;
-  addXP(10,"Daily check-in. Doing nothing on a no-signal day is a win.","","checkin");badge("showed_up");if(S.streak.count>=7)badge("streak7");return true;}
-function cleanCheck(){const since=S.lastOffPlan||S.startedAt;if(Date.now()-since>=30*864e5)badge("clean30");}
+  addXP(10,"Daily check-in. Doing nothing on a no-signal day is a win.","","checkin");return true;}
 function toast(t){const el=document.getElementById("toast");el.textContent=t;el.classList.add("show");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("show"),2200);}
 
 /* ---------- rules engine ---------- */
@@ -228,7 +213,7 @@ function coinAvail(sym){return coinBudget(sym)-(S.spent[sym]||0);}
 
 function directive(c){
   const me=C(c.symbol);
-  if(me.rungAnchor!==null && Math.abs(me.rungAnchor-c.ladder.anchor)>1e-9){me.rungsDone=[];}
+  if(me.rungAnchor!==null && Math.abs(me.rungAnchor-c.ladder.anchor)>1e-9){me.rungsDone=[];me.boostDone=0;}
   me.rungAnchor=c.ladder.anchor;
   const on=flagsOn(c);
   const n=on.length, t=tierOf(n);
@@ -247,8 +232,21 @@ function directive(c){
   const hit=c.ladder.rungs.filter(r=>r.hit&&!me.rungsDone.includes(r.n));
   if(hit.length){const r=hit[0];const amt=coinBudget(c.symbol)*r.share/100;
     return {k:"buy",title:`Ladder rung ${r.n} reached`,text:amt>0?`Your rule: deploy ${money(amt)} of your ${c.symbol} dip reserve at ≤ ${money(r.price)} (≈ ${qty(amt/r.price)} ${c.symbol}).`:`Rung ${r.n} (${money(r.price)}) reached. Set your dip reserve in Setup to see the dollar amount.`,act:"buy",rung:r,amt};}
-  if(c.bottom_count>=2) return {k:"zone",title:"Accumulation zone",text:`${c.bottom_count}/3 bottom signals on. Historically a strong area to be buying. Keep your core buys running and your ladder orders in place.`,why:Object.keys(c.bottoms).filter(k=>c.bottoms[k].on).map(k=>BOTTOM_INFO[k]).join(", ")};
+  // Buy zone: 3+ bottom signals -> buy your next ladder rung(s) EARLY, mirroring the trim levels
+  const bn=c.bottom_count||0, bt=tierOf(bn), bwhy="Signals on: "+Object.keys(c.bottoms||{}).filter(k=>c.bottoms[k].on).map(k=>BOTTOM_INFO[k]||k).join(", ");
+  if(bn>=3){
+    const done=me.boostDone||0;
+    if(bt>done){
+      const next=c.ladder.rungs.filter(r=>!me.rungsDone.includes(r.n)).slice(0,bt-done);
+      if(!next.length) return {k:"zone",title:`${bn}/${NBOTTOMS} bottom signals · buy zone`,text:`Your whole ${c.symbol} ladder is already bought. Keep core buys running; trims will refill your dip reserve later.`,why:bwhy};
+      const amt=next.reduce((a,r)=>a+coinBudget(c.symbol)*r.share/100,0);
+      const which=next.map(r=>r.n).join(" + ");
+      return {k:"zone",title:`${bn}/${NBOTTOMS} bottom signals · buy early`,text:amt>0?`Your rule: buy ladder rung ${which} now instead of waiting for the price to fall to it: ${money(amt)} of your ${c.symbol} dip reserve at about ${money(c.price)} (≈ ${qty(amt/c.price)} ${c.symbol}).`:`Your rule: buy ladder rung ${which} early. Set your dip reserve in Setup to see the dollar amount.`,why:bwhy,act:"boost",rungs:next.map(r=>r.n),amt,bt};
+    }
+    return {k:"zone",title:`${bn}/${NBOTTOMS} bottom signals · buy zone`,text:`You've already bought early at this level. Leave your remaining ladder orders in place; more signals would mean another early rung.`,why:bwhy};
+  }
   if(n>0) return {k:"hold",title:`Hold · ${n}/${NFLAGS} flags`,text:`Below your 3-flag trim rule. Watch it, don't act. Core buys continue.`,why:"Flags on: "+why};
+  if(bn>0) return {k:"hold",title:`Hold · ${bn}/${NBOTTOMS} bottom signals`,text:`Getting cheaper, but below your 3-signal buy-early rule. Ladder orders stay in place; core buys continue.`,why:bwhy};
   return {k:"hold",title:"Hold",text:"No rule triggered. Core buys continue. Doing nothing is the move today."};
 }
 
@@ -270,10 +268,11 @@ function renderHeader(){const L=level(),cur=LEVELS[L][0],nxt=LEVELS[L+1]?LEVELS[
     b+=left>0?`<div class="banner cool">🧊 Cooldown running: ${Math.ceil(left/36e5)}h left. Your rules still apply. Check back after.</div>`
              :`<div class="banner cool">🧊 Cooldown finished. Still want to sell? If not: <button class="b go" onclick="heldLine()">I held the line (+100 XP)</button></div>`;}
   if(DATA&&!IS_DEMO&&ageMin()>75)b+=`<div class="banner stale">⚠️ Watcher signals are ${Math.round(ageMin())} minutes old (normally under 20). Flags may be out of date. Check GitHub → Actions.</div>`;
+  if(DATA&&!IS_DEMO&&DATA.version!==APP_VERSION)b+=`<div class="banner stale">⚠️ Version mismatch: this app is v${APP_VERSION} but the watcher is ${DATA.version?"v"+esc(DATA.version):"an older version"}. One of the files wasn't uploaded, or the watcher hasn't run since. Check GitHub → Actions; if it's green, re-upload the whole set.</div>`;
   const mm=DATA?DATA.coins.filter(c=>LIVE.mismatch[c.symbol]).map(c=>c.symbol):[];
   if(mm.length)b+=`<div class="banner stale">⚠️ Live price for ${mm.join(", ")} disagrees with the watcher by more than 25%, so the app is ignoring the live price for rules. Check the coin's "kraken"/"ws" names in coins.json.</div>`;
   document.getElementById("banners").innerHTML=b;
-  document.getElementById("foot").innerHTML=DATA?`Data: ${esc(DATA.source||"")} · signals updated ${new Date(DATA.generated_at).toLocaleString()}${IS_DEMO?"":" ("+Math.round(ageMin())+" min ago)"} · live prices: Kraken WebSocket. These are rule-based signals, not predictions or financial advice. All 6 flags are set automatically by the watcher. You can tap News or FOMO to override for 7 days.`:"";}
+  document.getElementById("foot").innerHTML=DATA?`Crypto Coach app v${APP_VERSION} · watcher ${DATA.version?"v"+esc(DATA.version):"(old)"} · Data: ${esc(DATA.source||"")} · signals updated ${new Date(DATA.generated_at).toLocaleString()}${IS_DEMO?"":" ("+Math.round(ageMin())+" min ago)"} · live prices: Kraken WebSocket. These are rule-based signals, not predictions or financial advice. All 6 flags are set automatically by the watcher. You can tap News or FOMO to override for 7 days.`:"";}
 
 function renderMissions(){
   if(!DATA){return FETCH_ERR?`<div class="card">Couldn't load signals from <span class="mono">${esc(S.settings.dataUrl)}</span> (${esc(FETCH_ERR)}). If you just set up GitHub, wait for the first watcher run to finish, then refresh.</div>`:`<div class="card">Loading signals…</div>`;}
@@ -283,17 +282,18 @@ function renderMissions(){
     const col=(c.change_7d||0)>=0?"var(--green)":"var(--red)";
     const nflags=flagsOn(c).length;
     h+=`<div class="card"><div class="coinhead"><div><div class="sym">${esc(c.symbol)}</div><div class="nm">${esc(c.name)} · ${c.drawdown_pct!=null?pc(c.drawdown_pct)+" from 2y high":""}</div></div>
-      <div class="px"><b class="mono" id="px-${c.symbol}">${money(c.price)}</b><div class="small mono"><span class="pill ${c.live?"lv":""}" id="src-${c.symbol}">${c.live?"● live":"watcher"}</span> <span id="ch-${c.symbol}" class="${c.change_24h>=0?"up":"dn"}">${pc(c.change_24h)} 24h</span> · <span class="${c.change_7d>=0?"up":"dn"}">${pc(c.change_7d)} 7d</span></div></div></div>
+      <div class="px"><b class="mono" id="px-${c.symbol}">${money(c.price)}</b><div class="small mono"><span class="pill ${c.live?"lv":""}" id="src-${c.symbol}">${c.live?"● live":"watcher"}</span> <br><span id="ch-${c.symbol}" class="${c.change_24h>=0?"up":"dn"}">${pc(c.change_24h)} 24h</span> · <span class="${c.change_7d>=0?"up":"dn"}">${pc(c.change_7d)} 7d</span></div></div></div>
       <div style="cursor:pointer" id="sp-${c.symbol}" onclick="openChart('${c.symbol}')" title="Open chart">${spark(liveSpark(c),col)}</div>
-      <div class="mission m-${d.k}"><div class="k">${esc(d.title)}</div><div class="t">${esc(d.text)}</div>${d.why?`<div class="why">${esc(d.why)}</div>`:""}
+      <div class="mission m-${d.k}" title="${esc(d.text+(d.why?"\n"+d.why:""))}"><div class="k">${esc(d.title)}</div><div class="t">${esc(d.text)}</div>${d.why?`<div class="why">${esc(d.why)}</div>`:""}
       <div class="btns">${actionButtons(c,d)}</div></div>
       <div class="sect"><span>Top-warning flags</span><span class="mono">${nflags}/${NFLAGS}</span></div>
       <div class="meter">${[...Array(NFLAGS)].map((_,i)=>`<i class="${i<nflags?"f":""}"></i>`).join("")}</div>
       <div class="chips" style="margin-top:8px">${Object.keys(FLAG_INFO).map(k=>{const f=(c.flags||{})[k],on=flagOn(c,k),o=ovr(c.symbol,k),info=FLAG_INFO[k];
         const det=(f?f.detail:"no data yet")+(o?` · set ${o.v?"ON":"OFF"} by you (tap to change)`:(info.ov?" · tap to override":""));
         return `<div class="chip ${on?"on":""} ${info.ov?"man":""}" ${info.ov?`onclick="cycleOverride('${c.symbol}','${k}')"`:""} title="${esc(det)}"><span class="d"></span><span>${info.n}<small>${esc(det)}</small></span></div>`}).join("")}</div>
-      <div class="sect"><span>Bottom signals</span><span class="mono">${c.bottom_count}/3</span></div>
-      <div class="chips">${Object.keys(c.bottoms).map(k=>`<div class="chip ${c.bottoms[k].on?"bon":""}"><span class="d"></span><span>${BOTTOM_INFO[k]}<small>${esc(c.bottoms[k].detail)}</small></span></div>`).join("")}</div>
+      <div class="sect"><span>Bottom signals</span><span class="mono">${c.bottom_count}/${NBOTTOMS}</span></div>
+      <div class="meter">${[...Array(NBOTTOMS)].map((_,i)=>`<i style="${i<c.bottom_count?"background:var(--ice)":""}"></i>`).join("")}</div>
+      <div class="chips" style="margin-top:8px">${Object.keys(c.bottoms).map(k=>`<div class="chip ${c.bottoms[k].on?"bon":""}"><span class="d"></span><span>${BOTTOM_INFO[k]||k}<small>${esc(c.bottoms[k].detail)}</small></span></div>`).join("")}</div>
       <div class="sect"><span>Dip ladder · from ${money(c.ladder.anchor)}</span><span class="mono">${money(coinAvail(c.symbol))} left</span></div>
       <div class="rungs">${c.ladder.rungs.map(r=>{const done=me.rungsDone.includes(r.n);return `<div class="rung ${done?"done":r.hit?"hit":""}"><small>−${r.drop}%</small><b class="mono">${money(r.price)}</b><small>${done?"✓ bought":r.hit?"reached":money(coinBudget(c.symbol)*r.share/100)}</small></div>`}).join("")}</div>
       <div class="sect"><span>Buckets</span><span class="mono">avg cost ${me.avgCost?money(me.avgCost):"–"}</span></div>
@@ -306,6 +306,7 @@ function renderMissions(){
 function actionButtons(c,d){
   if(d.act==="trim")return `<button class="b pri" onclick="logTrim('${c.symbol}')">I trimmed ✓</button><button class="b" onclick="skip('${c.symbol}','trim')">Not now</button>`;
   if(d.act==="stop")return `<button class="b pri" onclick="logStop('${c.symbol}')">I sold the moonbag ✓</button><button class="b" onclick="skip('${c.symbol}','stop')">Not now</button>`;
+  if(d.act==="boost")return `<button class="b pri" onclick="logBoost('${c.symbol}')">Bought early ✓</button><button class="b" onclick="skip('${c.symbol}','early buy')">Not now</button>`;
   if(d.act==="buy")return `<button class="b pri" onclick="logBuy('${c.symbol}',${d.rung.n})">Bought rung ${d.rung.n} ✓</button><button class="b" onclick="skip('${c.symbol}','rung')">Skip this rung</button>`;
   return `<button class="b" onclick="logBuy('${c.symbol}',0)">Log a core buy</button><button class="b" onclick="openChart('${c.symbol}')">📈 Chart</button>`;}
 
@@ -345,11 +346,9 @@ function renderNews(){if(!DATA)return `<div class="card">Loading…</div>`;const
     <p class="small muted">Headlines are matched to coins by fixed keywords and tagged by fixed word lists. No AI. A tag can occasionally be wrong; flags always show what triggered them.</p>`;
   return h;}
 
-function renderJournal(){if(!S.log.length)return `<div class="card muted">Nothing logged yet. Your first check-in starts the journal.</div>`;
-  return `<div class="card"><table><tr><th>When</th><th>Coin</th><th>What happened</th><th>XP</th></tr>${S.log.map(l=>`<tr><td class="small muted">${new Date(l.ts).toLocaleString()}</td><td>${esc(l.coin)}</td><td>${esc(l.text)}</td><td class="mono ${l.xp>=0?"up":"dn"}">${l.xp>=0?"+":""}${l.xp}</td></tr>`).join("")}</table></div>`;}
-
-function renderBadges(){return `<div class="badges">${BADGES.map(b=>`<div class="badge ${S.badges[b[0]]?"got":""}"><div class="ic">${b[1]}</div><b>${b[2]}</b><small>${b[3]}</small></div>`).join("")}</div>
-  <div class="card" style="margin-top:14px"><b>How XP works</b><p class="small muted">+10 daily check-in · +50 buying a ladder rung · +60 trimming on flags or following a trailing stop · +100 finishing a 24h cooldown instead of panic-selling · +5 logging a skip honestly · −30 off-plan trade (and your streak resets). XP rewards following your rules, not profit. Profit is the market's job; discipline is yours.</p></div>`;}
+const XP_HELP=`<div class="card" style="margin-bottom:14px"><b>How XP works</b><p class="small muted">+10 daily check-in · +15 core buy · +50 buying a ladder rung (when price reaches it, or early on 3+ bottom signals) · +60 trimming on flags or following your trailing stop · +100 finishing a 24h cooldown instead of panic-selling · +5 logging a skip honestly · −30 off-plan trade (and your streak resets). XP rewards following your rules, not profit. Profit is the market's job; discipline is yours.</p></div>`;
+function renderJournal(){if(!S.log.length)return XP_HELP+`<div class="card muted">Nothing logged yet. Your first check-in starts the journal.</div>`;
+  return XP_HELP+`<div class="card"><table><tr><th>When</th><th>Coin</th><th>What happened</th><th>XP</th></tr>${S.log.map(l=>`<tr><td class="small muted">${new Date(l.ts).toLocaleString()}</td><td>${esc(l.coin)}</td><td>${esc(l.text)}</td><td class="mono ${l.xp>=0?"up":"dn"}">${l.xp>=0?"+":""}${l.xp}</td></tr>`).join("")}</table></div>`;}
 
 function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S.coins);
   return `<div class="card"><b>Holdings</b><p class="small muted">Stays on this device only, never sent anywhere. Core = staked / long-term (never sold on flags). Trade = the part flag rules apply to.</p>
@@ -363,7 +362,7 @@ function renderSetup(){const syms=DATA?DATA.coins.map(c=>c.symbol):Object.keys(S
     <div class="btns"><button class="b" onclick="copyBackup()">Copy backup</button><button class="b" onclick="restore()">Restore from backup</button><button class="b warn" onclick="wipe()">Reset everything</button></div></div>`;}
 
 function render(){renderHeader();const v=document.getElementById("view");
-  v.innerHTML=TAB==="missions"?renderMissions():TAB==="reserve"?renderReserve():TAB==="journal"?renderJournal():TAB==="badges"?renderBadges():TAB==="news"?renderNews():renderSetup();
+  v.innerHTML=TAB==="missions"?renderMissions():TAB==="reserve"?renderReserve():TAB==="journal"?renderJournal():TAB==="news"?renderNews():renderSetup();
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===TAB));}
 
 /* ---------- actions ---------- */
@@ -384,12 +383,24 @@ function logBuy(sym,n){const c=eff(coinData(sym)),r=n?c.ladder.rungs[n-1]:null;c
   <div><label>Price paid</label><input id="mPx" type="number" step="any" value="${(r?r.price:c.price).toPrecision(6)}"></div></div>
   <label>Goes into</label><select id="mDest"><option value="trade">Trade bucket</option><option value="core" ${r?"":"selected"}>Core / staking</option></select>
   <div class="btns"><button class="b pri" onclick="confirmBuy('${sym}',${n})">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function logBoost(sym){const c=eff(coinData(sym)),d=directive(c);if(d.act!=="boost")return;
+  modal(`<h3>Bought early · ${sym}</h3><p class="small muted">${esc(d.text)}</p><div class="two"><div><label>Spent ($)</label><input id="mAmt" type="number" step="any" value="${d.amt?d.amt.toFixed(2):""}"></div>
+  <div><label>Price paid</label><input id="mPx" type="number" step="any" value="${c.price.toPrecision(6)}"></div></div>
+  <label>Goes into</label><select id="mDest"><option value="trade">Trade bucket</option><option value="core">Core / staking</option></select>
+  <div class="btns"><button class="b pri" onclick="confirmBoost('${sym}',[${d.rungs}],${d.bt})">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function confirmBoost(sym,rungs,bt){const amt=+document.getElementById("mAmt").value,px=+document.getElementById("mPx").value,dest=document.getElementById("mDest").value;
+  if(!(amt>0&&px>0))return toast("Enter amount and price");
+  const me=C(sym),q=amt/px,held=me.core+me.trade;
+  if(me.avgCost>0)me.avgCost=(me.avgCost*held+amt)/(held+q);else if(held===0)me.avgCost=px;
+  me[dest]+=q;S.spent[sym]=(S.spent[sym]||0)+amt;rungs.forEach(n=>{if(!me.rungsDone.includes(n))me.rungsDone.push(n);});
+  me.boostDone=bt;me.cycle={baseline:null,tiersDone:0};
+  addXP(50,`Bought early on bottom signals (rung ${rungs.join(" + ")}): ${qty(q)} ${sym} at ${money(px)}. Rule followed.`,sym,"buy");closeModal();render();}
 function confirmBuy(sym,n){const amt=+document.getElementById("mAmt").value,px=+document.getElementById("mPx").value,dest=document.getElementById("mDest").value;
   if(!(amt>0&&px>0))return toast("Enter amount and price");
   const me=C(sym),q=amt/px,held=me.core+me.trade;
   if(me.avgCost>0)me.avgCost=(me.avgCost*held+amt)/(held+q);else if(held===0)me.avgCost=px; // unknown cost + existing coins: leave unknown
   me[dest]+=q;
-  if(n){S.spent[sym]=(S.spent[sym]||0)+amt;me.rungsDone.push(n);me.cycle={baseline:null,tiersDone:0};badge("first_rung");if(me.rungsDone.length>=4)badge("full_ladder");
+  if(n){S.spent[sym]=(S.spent[sym]||0)+amt;me.rungsDone.push(n);me.cycle={baseline:null,tiersDone:0};
     addXP(50,`Bought ladder rung ${n}: ${qty(q)} ${sym} at ${money(px)}. Rule followed.`,sym,"buy");}
   else addXP(15,`Core buy: ${qty(q)} ${sym} at ${money(px)}.`,sym,"buy");
   closeModal();render();}
@@ -401,13 +412,13 @@ function logTrim(sym){const c=eff(coinData(sym)),d=directive(c);
 function confirmTrim(sym,t){const q=+document.getElementById("mQ").value,px=+document.getElementById("mPx").value;if(!(q>0&&px>0))return toast("Enter coins and price");
   const me=C(sym);if(!me.cycle.baseline){me.cycle.baseline=me.trade;me.cycle.since=Date.now();me.cycle.peak=px;}else me.cycle.peak=Math.max(me.cycle.peak||px,px);
   me.trade=Math.max(0,me.trade-q);me.cycle.tiersDone=t;S.reserve.total=(S.reserve.total||0)+q*px;
-  badge("took_profit");addXP(60,`Trimmed ${qty(q)} ${sym} at ${money(px)}. ${money(q*px)} added to your dip reserve.`,sym,"trim");closeModal();render();}
+  addXP(60,`Trimmed ${qty(q)} ${sym} at ${money(px)}. ${money(q*px)} added to your dip reserve.`,sym,"trim");closeModal();render();}
 
 function logStop(sym){const c=eff(coinData(sym)),me=C(sym);
   modal(`<h3>Moonbag stop · ${sym}</h3><div class="two"><div><label>Coins sold</label><input id="mQ" type="number" step="any" value="${me.trade}"></div><div><label>Price</label><input id="mPx" type="number" step="any" value="${c.price.toPrecision(6)}"></div></div>
   <div class="btns"><button class="b pri" onclick="confirmStop('${sym}')">Log it</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
 function confirmStop(sym){const q=+document.getElementById("mQ").value,px=+document.getElementById("mPx").value;const me=C(sym);
-  me.trade=Math.max(0,me.trade-q);me.cycle={baseline:null,tiersDone:0};S.reserve.total=(S.reserve.total||0)+q*px;badge("moonbag");
+  me.trade=Math.max(0,me.trade-q);me.cycle={baseline:null,tiersDone:0};S.reserve.total=(S.reserve.total||0)+q*px;
   addXP(60,`Trailing stop followed: sold ${qty(q)} ${sym} at ${money(px)}. Proceeds to dip reserve.`,sym,"stop");closeModal();render();}
 
 document.getElementById("panicBtn").onclick=()=>{
@@ -416,7 +427,7 @@ document.getElementById("panicBtn").onclick=()=>{
   <p class="small muted">Panic-selling isn't in your plan. Most of the times you sold in fear, price bounced ~15% after. A 24-hour cooldown costs you nothing.</p>
   <div class="btns"><button class="b go" onclick="startCool()">Start 24h cooldown</button><button class="b warn" onclick="offPlan()">Sell anyway (off-plan)</button><button class="b" onclick="closeModal()">Close</button></div>`);};
 function startCool(){S.panic={until:Date.now()+864e5};save();closeModal();toast("Cooldown started. See you in 24h.");render();}
-function heldLine(){S.panic=null;badge("held_line");addXP(100,"Finished a 24h cooldown and held the line.","","held");render();}
+function heldLine(){S.panic=null;addXP(100,"Finished a 24h cooldown and held the line.","","held");render();}
 function offPlan(){S.lastOffPlan=Date.now();S.streak.count=0;S.panic=null;addXP(-30,"Off-plan sell logged. No shame. Note what you felt in your journal.","","offplan");closeModal();render();}
 
 function addCoin(){const repo=(S.settings.repoUrl||"").replace(/\/$/,"");
@@ -436,7 +447,7 @@ function resetCycle(){Object.values(S.coins).forEach(m=>m.cycle={baseline:null,t
 function copyBackup(){navigator.clipboard.writeText(JSON.stringify(S)).then(()=>toast("Backup copied. Paste it somewhere safe"),()=>{modal(`<h3>Backup</h3><textarea rows="8">${esc(JSON.stringify(S))}</textarea><div class="btns"><button class="b" onclick="closeModal()">Close</button></div>`);});}
 function restore(){modal(`<h3>Restore</h3><textarea id="rb" rows="8" placeholder="Paste backup here"></textarea><div class="btns"><button class="b pri" onclick="doRestore()">Restore</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
 function doRestore(){try{const s=JSON.parse(document.getElementById("rb").value);if(!s.coins)throw 0;S=Object.assign(blank(),s);save();closeModal();toast("Restored");render();}catch(e){toast("That doesn't look like a backup");}}
-function wipe(){modal(`<h3>Reset everything?</h3><p class="small muted">Deletes holdings, XP, badges and journal on this device.</p><div class="btns"><button class="b warn" onclick="S=blank();save();closeModal();render()">Yes, reset</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
+function wipe(){modal(`<h3>Reset everything?</h3><p class="small muted">Deletes holdings, XP and journal on this device.</p><div class="btns"><button class="b warn" onclick="S=blank();save();closeModal();render()">Yes, reset</button><button class="b" onclick="closeModal()">Cancel</button></div>`);}
 
 document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{TAB=b.dataset.t;render();});
 
@@ -446,7 +457,7 @@ async function fetchData(){
     DATA=await r.json();IS_DEMO=false;FETCH_ERR=null;}
   catch(e){FETCH_ERR=String(e.message||e);if(DEMO){DATA=DEMO;IS_DEMO=true;}}
   if(DATA&&DATA.generated_at!==prevGen){CH.candles={};if(prevGen)refreshPeaks();}
-  if(DATA)DATA.coins.forEach(c=>C(c.symbol));cleanCheck();save();
+  if(DATA)DATA.coins.forEach(c=>C(c.symbol));save();
   const ae=document.activeElement;if(ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName))return;render();}
 
 /* ---------- live prices (Kraken WebSocket v2, public, no key) ---------- */
@@ -479,7 +490,7 @@ function connectLive(){
   ws.onclose=()=>{setLive("reconnecting");LIVE.tries++;setTimeout(connectLive,Math.min(30000,1000*2**LIVE.tries));};
   ws.onerror=()=>{try{ws.close();}catch(e){}};}
 function tickUI(ws){const c=DATA&&DATA.coins.find(x=>wsSym(x)===ws);if(!c)return;const e=eff(c);
-  const px=document.getElementById("px-"+c.symbol);if(px&&px.textContent!==money(e.price)){px.textContent=money(e.price);px.classList.remove("flash");void px.offsetWidth;px.classList.add("flash");}
+  const px=document.getElementById("px-"+c.symbol);if(px&&px.textContent!==money(e.price)){px.textContent=money(e.price);}
   const ch=document.getElementById("ch-"+c.symbol);if(ch){ch.textContent=pc(e.change_24h)+" 24h";ch.className=e.change_24h>=0?"up":"dn";}
   const src=document.getElementById("src-"+c.symbol);if(src){src.textContent=e.live?"● live":"watcher";src.className="pill "+(e.live?"lv":"");}
   const sp=document.getElementById("sp-"+c.symbol);if(sp){const col=(c.change_7d||0)>=0?"var(--green)":"var(--red)";sp.innerHTML=spark(liveSpark(e),col);}
@@ -487,7 +498,9 @@ function tickUI(ws){const c=DATA&&DATA.coins.find(x=>wsSym(x)===ws);if(!c)return
   LIVE.dirty=true;}
 // re-check missions with live prices every 20s (never while you're typing or a dialog is open)
 setInterval(()=>{if(!LIVE.dirty||TAB!=="missions")return;if(document.getElementById("modal").classList.contains("open"))return;
-  const a=document.activeElement;if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;LIVE.dirty=false;render();},20000);
+  const a=document.activeElement;if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;LIVE.dirty=false;
+  const sig=DATA.coins.map(c=>{const d=directive(eff(c));return c.symbol+d.k+d.title+d.text;}).join("|");
+  if(sig!==LIVE.sig){LIVE.sig=sig;render();}},20000);
 // watchdog: no message for 60s means the feed is dead
 setInterval(()=>{if(LIVE.status==="live"&&Date.now()-LIVE.last>60000){setLive("reconnecting");try{LIVE.ws.close();}catch(e){}}},15000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden){fetchData();if(!LIVE.ws||LIVE.ws.readyState>1)connectLive();}});

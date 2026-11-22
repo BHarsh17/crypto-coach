@@ -28,6 +28,13 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import news  # noqa: E402
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+try:
+    with open(os.path.join(HERE, "..", "VERSION")) as _f:
+        VERSION = _f.read().strip()
+except OSError:
+    VERSION = "unknown"
+
 SPOT = "https://api.kraken.com/0/public/OHLC"
 FUT = "https://futures.kraken.com/derivatives/api/v3"
 UA = {"User-Agent": "crypto-coach-watcher/1.0"}
@@ -230,8 +237,13 @@ def score_coin(coin, th, ladder, prev):
     }
 
     # --- buy / bottom signals
+    # Each one mirrors a top flag, pointing the other way.
+    b_freefall = (ch7 is not None and ch7 <= -th["freefall_7d_pct"]) or (ch30 is not None and ch30 <= -th["freefall_30d_pct"])
+    b_below = (stretch50 is not None and stretch50 <= -th["stretched_down_ma50_pct"]) or (
+        stretch20 is not None and stretch20 <= -th["stretched_down_ma20_pct"])
+    b_oversold = (rsi_d is not None and rsi_d <= th["rsi_daily_cold"]) or (rsi_w is not None and rsi_w <= th["rsi_weekly_cold"])
+    b_shorts = funding is not None and funding <= th["funding_cold_8h"]
     near200w = ma200w is not None and price <= ma200w * (1 + th["near_200w_pct"] / 100)
-    cold = rsi_w is not None and rsi_w <= th["rsi_weekly_cold"]
     capit = False
     if len(d) > 35:
         for c_i in range(len(d) - 4, len(d) - 1):  # last 3 completed days
@@ -240,9 +252,12 @@ def score_coin(coin, th, ladder, prev):
             if avgv and c["v"] >= th["capitulation_volume_x"] * avgv and pct(c["c"], c["o"]) <= -th["capitulation_drop_pct"]:
                 capit = True
     bottoms = {
-        "near_200w": {"on": bool(near200w), "detail": f"200-week avg {money(ma200w)} ({fmtp(pct(price, ma200w))} away)"},
-        "rsi_cold": {"on": bool(cold), "detail": f"weekly RSI {rnd(rsi_w, 0)}"},
+        "freefall": {"on": bool(b_freefall), "detail": f"7d {fmtp(ch7)}, 30d {fmtp(ch30)}"},
+        "stretched_down": {"on": bool(b_below), "detail": f"{fmtp(stretch50)} vs 50-day avg, {fmtp(stretch20)} vs 20-day"},
+        "oversold": {"on": bool(b_oversold), "detail": f"daily RSI {rnd(rsi_d, 0)}, weekly RSI {rnd(rsi_w, 0)}"},
+        "shorts_crowded": {"on": bool(b_shorts), "detail": "no futures data" if not fut else f"funding {fmtf(funding)}/8h"},
         "capitulation": {"on": capit, "detail": "big-volume red day in last 3 days" if capit else "none in last 3 days"},
+        "near_200w": {"on": bool(near200w), "detail": f"200-week avg {money(ma200w)} ({fmtp(pct(price, ma200w))} away)"},
     }
 
     # --- dip ladder
@@ -326,10 +341,12 @@ def build_alerts(s, first_run):
             msgs.append(f"🪜 {s['symbol']} ladder rung {n} reached ({money(r['price'])}, −{r['drop']}%). "
                         f"Rule: deploy {r['share']}% of your {s['symbol']} dip reserve. Log it in the app for XP.")
     al["rungs"] = hit
-    bc = s["bottom_count"]
-    if bc >= 2 and al.get("bottoms", 0) < 2 and not first_run:
-        msgs.append(f"🧊 {s['symbol']} {bc}/3 bottom signals on — historically a strong accumulation zone.")
-    al["bottoms"] = bc
+    bt = tier(s["bottom_count"])
+    if bt > al.get("btier", 0) and not first_run:
+        names = [k.replace("_", " ") for k, b in s["bottoms"].items() if b["on"]]
+        msgs.append(f"🧊 {s['symbol']} {s['bottom_count']}/6 bottom signals ({', '.join(names)}) at {money(s['price'])}. "
+                    f"Open the app: your rule may say buy your next ladder rung early.")
+    al["btier"] = bt
     # (no trailing-stop alert here: your stop trails the peak since YOUR first trim,
     #  which only the app knows, because trims are private to your browser)
     return msgs
@@ -481,6 +498,7 @@ def main():
 
     doc = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "version": VERSION,
         "source": "Kraken public API" if not os.environ.get("DEMO_OFFLINE") else "synthetic test data",
         "thresholds": th,
         "ladder": cfg["ladder"],

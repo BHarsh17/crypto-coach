@@ -9,6 +9,7 @@ Three layers:
 import json
 import os
 import random
+import re
 import statistics
 import subprocess
 import sys
@@ -229,11 +230,52 @@ def test_bottom_near_200w_boundary():
         assert s["bottoms"]["near_200w"]["on"] == want, p
 
 
-def test_bottom_weekly_rsi_cold():
+def test_bottom_oversold():
     falling = [100 * 0.98 ** i for i in range(80)]
     s = run_coin(candle_series([100.0] * 120, 1440), weekly=candle_series(falling, 10080))
     close(s["rsi_weekly"], 0.0, 1e-9)
-    assert s["bottoms"]["rsi_cold"]["on"]
+    assert s["bottoms"]["oversold"]["on"]                              # weekly <= 30
+    daily = [100 * 0.99 ** i for i in range(120)]
+    s = run_coin(candle_series(daily, 1440))
+    assert s["rsi_daily"] == 0.0 and s["bottoms"]["oversold"]["on"]    # daily <= 25
+    calm = [100 + (1 if i % 2 else -1) for i in range(120)]
+    assert not run_coin(candle_series(calm, 1440))["bottoms"]["oversold"]["on"]
+
+
+def test_bottom_freefall_boundary():
+    on = run_coin(candle_series(flat_then([75.0]), 1440))      # exactly -25% in 7d
+    off = run_coin(candle_series(flat_then([75.01]), 1440))
+    assert on["bottoms"]["freefall"]["on"] and not off["bottoms"]["freefall"]["on"]
+    closes = [100.0] * 120
+    closes[-31] = 200.0                                        # -50% over 30 days, flat over 7
+    s = run_coin(candle_series(closes, 1440))
+    assert s["bottoms"]["freefall"]["on"] and abs(s["change_7d"]) < 1e-9
+
+
+def test_bottom_stretched_down_boundary():
+    # 30 days at 200, 19 days at 80, today P. 50-day rule: P <= 0.75*(6000+1520+P)/50  <=>  P <= 5640/49.25 = 114.52...
+    # (20-day average ~80, so P well above it keeps the 20-day rule off)
+    for p, want in ((114.51, True), (114.53, False)):
+        closes = [100.0] * 70 + [200.0] * 30 + [80.0] * 19 + [p]
+        s = run_coin(candle_series(closes, 1440))
+        assert s["bottoms"]["stretched_down"]["on"] == want, (p, s["bottoms"]["stretched_down"])
+    # 20-day rule alone: 19 days at 100, today P <= 0.8*(1900+P)/20  <=>  P <= 1520/19.2 = 79.1666...
+    for p, want in ((79.16, True), (79.17, False)):
+        closes = [30.0] * 70 + [100.0] * 49 + [p]                # 50-day avg ~99.6 -> about -20.5%, under the 25% rule
+        s = run_coin(candle_series(closes, 1440))
+        assert s["bottoms"]["stretched_down"]["on"] == want, (p, s["bottoms"]["stretched_down"])
+
+
+def test_bottom_shorts_crowded_boundary():
+    d = candle_series([100.0] * 120, 1440)
+    assert run_coin(d, fut={"oi": None, "funding": -0.0001})["bottoms"]["shorts_crowded"]["on"]
+    assert not run_coin(d, fut={"oi": None, "funding": -0.000099})["bottoms"]["shorts_crowded"]["on"]
+    assert not run_coin(d, fut=None)["bottoms"]["shorts_crowded"]["on"]
+
+
+def test_bottom_count_matches():
+    s = run_coin(candle_series([100 * 0.99 ** i for i in range(120)], 1440), fut={"oi": None, "funding": -0.001})
+    assert s["bottom_count"] == sum(1 for b in s["bottoms"].values() if b["on"]) and len(s["bottoms"]) == 6
 
 
 def test_bottom_capitulation():
@@ -294,7 +336,8 @@ def test_trailing_stop_and_drawdown():
 
 
 def test_alerts_fire_once():
-    s = {"symbol": "TST", "price": 100.0, "auto_flag_count": 3, "bottom_count": 2, "trailing_stop": 120.0,
+    s = {"symbol": "TST", "price": 100.0, "auto_flag_count": 3, "bottom_count": 3, "trailing_stop": 120.0,
+         "bottoms": {"freefall": {"on": True}, "oversold": {"on": True}, "capitulation": {"on": True}},
          "flags": {"vertical": {"on": True}, "stretched": {"on": True}, "rsi": {"on": True}},
          "ladder": {"rungs": [{"n": 1, "price": 90, "drop": 10, "share": 25, "hit": True},
                               {"n": 2, "price": 80, "drop": 20, "share": 25, "hit": False}]},
@@ -306,6 +349,10 @@ def test_alerts_fire_once():
     assert len(watch.build_alerts(s, first_run=False)) == 1  # tier 1 -> 2
     s["auto_flag_count"] = 5
     assert watch.build_alerts(s, first_run=False) == []      # still tier 2
+    s["bottom_count"] = 2
+    assert watch.build_alerts(s, first_run=False) == []      # bottoms fell: no alert
+    s["bottom_count"] = 3
+    assert len(watch.build_alerts(s, first_run=False)) == 1  # back into the buy zone: alert again
     s2 = dict(s, alerted={})
     assert watch.build_alerts(s2, first_run=True) == []       # first run: no spam
 
@@ -458,6 +505,17 @@ def test_news_flags_boundaries():
     assert "unavailable" in f(tok=False)["fomo"]["detail"]
 
 
+# =================================================================== versions
+def test_versions_match():
+    root = os.path.join(HERE, "..")
+    v = open(os.path.join(root, "VERSION")).read().strip()
+    assert re.fullmatch(r"\d+\.\d+\.\d+", v), v
+    app = open(os.path.join(root, "site", "index.html")).read()
+    assert f'const APP_VERSION = "{v}";' in app, "site/index.html and VERSION disagree"
+    assert watch.VERSION == v
+    assert f"## {v}" in open(os.path.join(root, "CHANGELOG.md")).read(), "CHANGELOG has no entry for this version"
+
+
 # =================================================================== end to end
 def test_end_to_end_offline_runs():
     root = os.path.join(HERE, "..")
@@ -479,11 +537,13 @@ def test_end_to_end_offline_runs():
             outs.append(out)
         a, b = (json.load(open(p)) for p in outs)
         for doc in (a, b):
+            assert doc["version"] == watch.VERSION
             assert len(doc["coins"]) == len(cfg["coins"])
             for c in doc["coins"]:
                 assert c["auto_flag_count"] == sum(1 for f in c["flags"].values() if f["on"])
                 assert set(c["flags"]) == {"vertical", "stretched", "rsi", "leverage", "news", "fomo"}
                 assert c["bottom_count"] == sum(1 for x in c["bottoms"].values() if x["on"])
+                assert set(c["bottoms"]) == {"freefall", "stretched_down", "oversold", "shorts_crowded", "capitulation", "near_200w"}
                 for r, cfg_r in zip(c["ladder"]["rungs"], cfg["ladder"]):
                     close(r["price"], c["ladder"]["anchor"] * (1 - cfg_r["drop"] / 100), 1e-9)
                 close(c["trailing_stop"], c["high_90d"] * 0.75, 1e-9)
