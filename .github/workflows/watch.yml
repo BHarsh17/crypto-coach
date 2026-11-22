@@ -36,6 +36,13 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python3 watcher/watch.py --config coins.json --out site/signals.json
 
+      - name: Backtest (recalculated once a day, never blocks the signals)
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          PREV_BACKTEST_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/backtest.json
+        run: python3 backtest/backtest.py --months 18 --out site/backtest.json
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
