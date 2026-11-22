@@ -9,8 +9,10 @@ app's rules: ladder rungs, buy-early, trims, trailing stop.
 Strategies compared, all starting with the same coins + the same cash reserve:
   app          the rules exactly as built
   ladder_only  the same but without the buy-early rule
-  proposed     candidate tweaks: 200-week signal only below the average,
-               buy-early spends half a rung, deeper ladder (-10/-25/-40/-55%)
+  reanchor     ladder only, and after every trim the ladder moves to the trim price
+  hybrid       half the reserve on a monthly schedule, half on a deeper ladder
+               (-10/-25/-40/-55%), ladder moves after trims, no buy-early
+Score: coin_equiv = coins + cash converted at the final price (total value in coins).
   dca          the reserve split into equal monthly buys
   lump         the whole reserve bought on day 1
   cash         keep the reserve as cash
@@ -71,32 +73,39 @@ def make_signal_fn(daily, weekly, th, ladder):
 
 
 # ----------------------------------------------------------------- one strategy run
-def simulate(daily, i0, i1, signals, ladder, th, buy_early=True, boost_fraction=1.0):
+def simulate(daily, i0, i1, signals, ladder, th, buy_early=True, boost_fraction=1.0,
+             reanchor_on_trim=False, dca_share=0.0):
+    """dca_share: part of the reserve bought on a monthly schedule instead of via the ladder.
+    reanchor_on_trim: after a trim, rebuild the ladder from the trim price using the cash on hand."""
     p0 = daily[i0]["c"]
     held = START_HOLDING_USD / p0
     st = {"core": held * CORE_SHARE, "trade": held * (1 - CORE_SHARE), "cash": RESERVE_USD,
           "reserve_total": RESERVE_USD, "fees": 0.0}
-    anchor = p0
-    left = {n: 1.0 for n in range(1, len(ladder) + 1)}     # unfilled fraction of each rung
+    lad = {"anchor": p0, "budget": RESERVE_USD * (1 - dca_share), "left": {n: 1.0 for n in range(1, len(ladder) + 1)}}
+    dca_pool = RESERVE_USD * dca_share
+    n_dca = max(1, round((i1 - i0) / 30.4375)) if dca_share > 0 else 0
+    dca_days = {i0 + int(k * (i1 - i0 + 1) / n_dca) for k in range(n_dca)} if n_dca else set()
     boost_done = 0
     cyc = {"baseline": None, "tiers_done": 0, "peak": None}
     events, trims = [], 0
 
     def rung_px(n):
-        return anchor * (1 - ladder[n - 1]["drop"] / 100)
+        return lad["anchor"] * (1 - ladder[n - 1]["drop"] / 100)
 
     def rung_usd(n):
-        return st["reserve_total"] * ladder[n - 1]["share"] / 100
+        base = lad["budget"] if (reanchor_on_trim or dca_share) else st["reserve_total"]
+        return base * ladder[n - 1]["share"] / 100
 
-    def buy(usd, px, why, t):
-        usd = min(usd, st["cash"])
+    def buy(usd, px, why, t, pool_cap=None):
+        usd = min(usd, st["cash"] if pool_cap is None else min(st["cash"], pool_cap))
         if usd <= 0.005:
-            return
+            return 0.0
         q = usd * (1 - FEE) / px
         st["cash"] -= usd
         st["fees"] += usd * FEE
         st["trade"] += q
         events.append([day(t), why, round(px, 6), round(usd, 2), round(q, 6)])
+        return usd
 
     def sell(q, px, why, t):
         q = min(q, st["trade"])
@@ -108,14 +117,21 @@ def simulate(daily, i0, i1, signals, ladder, th, buy_early=True, boost_fraction=
         st["reserve_total"] += got        # trims refill the dip reserve
         st["fees"] += q * px * FEE
         events.append([day(t), why, round(px, 6), round(-got, 2), round(-q, 6)])
+        if reanchor_on_trim:              # the ladder moves to the sale price, funded by the cash on hand
+            lad["anchor"] = px
+            lad["budget"] = st["cash"] - (dca_pool if dca_share else 0)
+            lad["left"] = {n: 1.0 for n in lad["left"]}
 
     for i in range(i0, i1 + 1):
         c = daily[i]
+        if i in dca_days:
+            dca_pool -= buy(RESERVE_USD * dca_share / n_dca, c["c"], "scheduled monthly buy", c["t"])
         if i > i0:   # resting limit orders fill when the day's low touches them
-            for n in left:
-                if left[n] > 1e-9 and c["l"] <= rung_px(n):
-                    buy(rung_usd(n) * left[n], rung_px(n), f"ladder rung {n} filled", c["t"])
-                    left[n] = 0.0
+            for n in lad["left"]:
+                if lad["left"][n] > 1e-9 and c["l"] <= rung_px(n):
+                    cap = st["cash"] - max(dca_pool, 0) if dca_share else None
+                    buy(rung_usd(n) * lad["left"][n], rung_px(n), f"ladder rung {n} filled", c["t"], cap)
+                    lad["left"][n] = 0.0
                     cyc = {"baseline": None, "tiers_done": 0, "peak": None}
         flags, bots = signals(i)
         px = c["c"]
@@ -129,17 +145,18 @@ def simulate(daily, i0, i1, signals, ladder, th, buy_early=True, boost_fraction=
             if cyc["baseline"] is None:
                 cyc["baseline"], cyc["peak"] = st["trade"], px
             q = min(st["trade"], cyc["baseline"] * 0.25 * (t_ - cyc["tiers_done"]))
+            tiers = cyc["tiers_done"]
             sell(q, px, f"trim on {len(flags)} top flags ({', '.join(flags)})", c["t"])
-            cyc["tiers_done"] = t_
+            cyc["tiers_done"] = max(t_, tiers)
             trims += 1
         bt = watch.tier(len(bots))
         if buy_early and len(bots) >= 3 and bt > boost_done:
-            fresh = [n for n in sorted(left) if left[n] >= 1.0 - 1e-9][: bt - boost_done]
+            fresh = [n for n in sorted(lad["left"]) if lad["left"][n] >= 1.0 - 1e-9][: bt - boost_done]
             if fresh:
                 usd = sum(rung_usd(n) * boost_fraction for n in fresh)
                 buy(usd, px, f"buy early (rung {'+'.join(map(str, fresh))}) on {len(bots)} bottom signals ({', '.join(bots)})", c["t"])
                 for n in fresh:
-                    left[n] -= boost_fraction
+                    lad["left"][n] -= boost_fraction
                 cyc = {"baseline": None, "tiers_done": 0, "peak": None}
             boost_done = bt
     return finish(st, daily[i1]["c"], p0, events, trims)
@@ -151,6 +168,7 @@ def finish(st, end_px, p0, events, trims=0):
     bought = coins - start_coins
     spent = sum(e[3] for e in events if e[3] > 0)
     return {"coins": round(coins, 6), "cash": round(st["cash"], 2), "value": round(coins * end_px + st["cash"], 2),
+            "coin_equiv": round(coins + st["cash"] / end_px, 6),
             "extra_coins": round(bought, 6), "fees": round(st["fees"], 2), "trims": trims,
             "avg_buy_price": round(spent / sum(e[4] for e in events if e[4] > 0), 6) if spent else None,
             "events": events}
@@ -189,13 +207,12 @@ def backtest_coin(symbol, daily, weekly, months, cfg, now=None):
     i1 = max(i for i, c in enumerate(daily) if c["t"] + DAY <= now)   # last finished day
     i0 = max(60, i1 - int(round(months * 30.4375)))            # keep 60+ days of warm-up history
     sig = make_signal_fn(daily, weekly, th, ladder)
-    th_p = dict(th, near_200w_pct=0)                            # proposed: only BELOW the 200-week average
-    lad_p = [{"drop": 10, "share": 25}, {"drop": 25, "share": 25}, {"drop": 40, "share": 25}, {"drop": 55, "share": 25}]
-    sig_p = make_signal_fn(daily, weekly, th_p, lad_p)
+    deep = [{"drop": 10, "share": 25}, {"drop": 25, "share": 25}, {"drop": 40, "share": 25}, {"drop": 55, "share": 25}]
     res = {
         "app": simulate(daily, i0, i1, sig, ladder, th),
         "ladder_only": simulate(daily, i0, i1, sig, ladder, th, buy_early=False),
-        "proposed": simulate(daily, i0, i1, sig_p, lad_p, th_p, boost_fraction=0.5),
+        "reanchor": simulate(daily, i0, i1, sig, ladder, th, buy_early=False, reanchor_on_trim=True),
+        "hybrid": simulate(daily, i0, i1, sig, deep, th, buy_early=False, reanchor_on_trim=True, dca_share=0.5),
         "dca": simple(daily, i0, i1, "dca"),
         "lump": simple(daily, i0, i1, "lump"),
         "cash": simple(daily, i0, i1, "cash"),
@@ -273,7 +290,7 @@ def main():
     for c in out:
         if "results" in c:
             r = c["results"]
-            print(f"{c['symbol']:4s} {c['change_pct']:+7.1f}%  " + "  ".join(f"{k}={v['coins']:.4f}c/${v['value']:.0f}" for k, v in r.items()))
+            print(f"{c['symbol']:4s} {c['change_pct']:+7.1f}%  " + "  ".join(f"{k}={v['coin_equiv']:.6g}" for k, v in r.items()))
 
 
 if __name__ == "__main__":

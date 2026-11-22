@@ -146,7 +146,7 @@ pre{white-space:pre-wrap;background:#0c111d;border:1px solid var(--line);border-
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "3.1.0";
+const APP_VERSION = "3.2.0";
 const DEMO = /*DEMO*/null;
 const DEMO_CANDLES = /*DEMOC*/null;
 const KEY = "crypto_coach_v1";
@@ -174,7 +174,7 @@ function C(sym){if(!S.coins[sym])S.coins[sym]={core:0,trade:0,avgCost:0,recurrin
 
 /* ---------- formatting ---------- */
 const money=x=>x==null||isNaN(x)?"–":x===0?"$0":(Math.abs(x)>=1000?"$"+x.toLocaleString(undefined,{maximumFractionDigits:0}):Math.abs(x)>=1?"$"+x.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):"$"+x.toFixed(4));
-const qty=x=>x==null||isNaN(x)?"–":(+x).toLocaleString(undefined,{maximumFractionDigits:x<10?4:2});
+const qty=x=>x==null||isNaN(x)?"–":Math.abs(x)<1&&x!==0?(+x).toPrecision(4):(+x).toLocaleString(undefined,{maximumFractionDigits:x<10?4:2});
 const pc=x=>x==null?"–":(x>0?"+":"")+x.toFixed(1)+"%";
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const today=()=>new Date().toISOString().slice(0,10);
@@ -351,25 +351,27 @@ const XP_HELP=`<div class="card" style="margin-bottom:14px"><b>How XP works</b><
 let BT=null,BT_ERR=null;
 async function loadBacktest(){try{const base=S.settings.dataUrl.replace(/[^\/]*$/,"");const r=await fetch(base+"backtest.json?t="+Date.now(),{cache:"no-store"});
   if(!r.ok)throw new Error("HTTP "+r.status);BT=await r.json();BT_ERR=null;}catch(e){BT_ERR=String(e.message||e);}if(TAB==="backtest")render();}
-const BT_NAMES={app:"Crypto Coach (as built)",ladder_only:"Ladder only (no buy-early)",proposed:"Proposed tweaks",dca:"Monthly DCA",lump:"All-in on day 1",cash:"Keep the cash"};
+const BT_NAMES={app:"Crypto Coach (as built)",ladder_only:"Ladder only (no buy-early)",reanchor:"Ladder moves after trims",hybrid:"Half monthly + half deep ladder",proposed:"Proposed tweaks",dca:"Monthly DCA",lump:"All-in on day 1",cash:"Keep the cash"};
+const score=r=>r.coin_equiv!=null?r.coin_equiv:r.coins;
 function renderBacktest(){if(!BT&&!BT_ERR){loadBacktest();return `<div class="card">Loading backtest…</div>`;}
   if(!BT)return `<div class="card muted">No backtest published yet (${esc(BT_ERR)}). It's calculated by the watcher once a day; check back after the next run.</div>`;
   const A=BT.assumptions||{};
   let h=`<div class="card"><b>What would the rules have done?</b> <span class="small muted">· last ${BT.months} months · calculated ${new Date(BT.generated_at).toLocaleString()} · v${esc(BT.version)}</span>
     <p class="small muted" style="margin:8px 0 0">Start: ${esc(A.start||"")}. Fees: ${esc(A.fees||"")}. ${esc(A.fills||"")}. Not tested: ${esc(A.not_tested||"")}.<br>
-    <b>Score = coins at the end</b> (your goal is accumulating). Value is shown at the final price. <b>Proposed tweaks</b> = 200-week signal only below the average, buy-early spends half a rung, ladder at −10/−25/−40/−55%.</p></div>`;
+    <b>Score = total value in coins</b>: coins held plus any cash converted at the final price, so selling high and holding cash counts fairly. <b>Ladder moves after trims</b> = after each trim the ladder restarts from the trim price, using the cash on hand. <b>Half monthly + half deep ladder</b> = half the reserve bought monthly, half on a −10/−25/−40/−55% ladder that also moves after trims; no buy-early.</p></div>`;
   for(const c of BT.coins){
     if(c.error){h+=`<div class="card" style="margin-top:14px"><b>${esc(c.symbol)}</b> <span class="muted small">failed: ${esc(c.error)}</span></div>`;continue;}
-    const R=c.results,best=Math.max(...Object.values(R).map(r=>r.coins)),dca=R.dca.coins;
+    const R=c.results,best=Math.max(...Object.values(R).filter((r,i)=>Object.keys(R)[i]!=="cash").map(score)),dca=score(R.dca);
     h+=`<div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between"><b style="font-size:18px">${esc(c.symbol)}</b>
       <span class="small mono">${c.start} → ${c.end} · ${money(c.start_price)} → ${money(c.end_price)} <span class="${c.change_pct>=0?"up":"dn"}">${pc(c.change_pct)}</span> · low ${money(c.low)} · high ${money(c.high)}</span></div>
-      <table style="margin-top:8px"><tr><th>Strategy</th><th>Coins at end</th><th>vs monthly DCA</th><th>Value</th><th>Avg buy price</th><th>Trims</th></tr>
-      ${Object.keys(BT_NAMES).filter(k=>R[k]).map(k=>{const r=R[k];return `<tr style="${r.coins===best?"background:#0f1f1a":""}"><td>${BT_NAMES[k]}${r.coins===best?" 🏆":""}</td><td class="mono">${qty(r.coins)}</td>
-        <td class="mono ${r.coins>=dca?"up":"dn"}">${k==="dca"?"—":pc((r.coins/dca-1)*100)}</td><td class="mono">${money(r.value)}${r.cash>0.5?` <span class="muted small">(incl. ${money(r.cash)} cash)</span>`:""}</td>
-        <td class="mono">${r.avg_buy_price?money(r.avg_buy_price):"—"}</td><td class="mono">${k==="app"||k==="ladder_only"||k==="proposed"?r.trims:"—"}</td></tr>`}).join("")}</table>
+      <table style="margin-top:8px"><tr><th>Strategy</th><th>Score (in coins)</th><th>vs monthly DCA</th><th>Coins held</th><th>Value</th><th>Avg buy price</th><th>Trims</th></tr>
+      ${Object.keys(BT_NAMES).filter(k=>R[k]).map(k=>{const r=R[k],sc=score(r),top=k!=="cash"&&sc===best;return `<tr style="${top?"background:#0f1f1a":""}"><td>${BT_NAMES[k]}${top?" 🏆":""}</td><td class="mono"><b>${qty(sc)}</b></td>
+        <td class="mono ${sc>=dca?"up":"dn"}">${k==="dca"?"—":pc((sc/dca-1)*100)}</td><td class="mono">${qty(r.coins)}</td><td class="mono">${money(r.value)}${r.cash>0.5?` <span class="muted small">(incl. ${money(r.cash)} cash)</span>`:""}</td>
+        <td class="mono">${r.avg_buy_price?money(r.avg_buy_price):"—"}</td><td class="mono">${["app","ladder_only","reanchor","hybrid","proposed"].includes(k)?r.trims:"—"}</td></tr>`}).join("")}</table>
+      <div class="small muted" style="margin-top:4px">🏆 = best of the buying strategies. Keeping the cash is shown for reference; it always wins when prices fall, but nobody knows that in advance.</div>
       <div class="small muted" style="margin-top:6px">Signals over the period: max ${c.signals.max_top_flags} top flags, max ${c.signals.max_bottom_signals} bottom signals · ${c.signals.days_3plus_top} days with 3+ top flags · ${c.signals.days_3plus_bottom} days with 3+ bottom signals</div>
       <details style="margin-top:8px"><summary class="small">Every trade the app's rules made</summary><table>${R.app.events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")||`<tr><td class="muted small">No trades.</td></tr>`}</table></details>
-      <details><summary class="small">Every trade with the proposed tweaks</summary><table>${R.proposed.events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")||`<tr><td class="muted small">No trades.</td></tr>`}</table></details></div>`;}
+      <details><summary class="small">Every trade with half monthly + half deep ladder</summary><table>${(R.hybrid||R.proposed).events.map(e=>`<tr><td class="small mono">${e[0]}</td><td class="small">${esc(e[1])}</td><td class="mono small">${money(e[2])}</td><td class="mono small">${e[3]>0?"spent "+money(e[3]):"got "+money(-e[3])}</td></tr>`).join("")||`<tr><td class="muted small">No trades.</td></tr>`}</table></details></div>`;}
   return h+`<p class="small muted">Past results don't predict future ones. This shows how the rules behaved on real prices, nothing more.</p>`;}
 
 function renderJournal(){if(!S.log.length)return XP_HELP+`<div class="card muted">Nothing logged yet. Your first check-in starts the journal.</div>`;

@@ -553,6 +553,37 @@ def test_backtest_trim_and_trailing_stop():
     close(r["coins"], 5.0, 1e-9)                          # core untouched, trade bucket emptied
 
 
+def test_backtest_reanchor_after_trim():
+    # trim at 200 on day 10, then the price falls to 150: the new ladder (from 200) buys at 180 and 160
+    closes = [100.0] * 10 + [200.0, 175.0, 155.0]
+    d = bt_series(closes)
+    sig = lambda i: (["vertical", "stretched", "rsi"] if i == 10 else [], [])  # noqa: E731
+    r = BT.simulate(d, 9, len(d) - 1, sig, LADDER, TH, buy_early=False, reanchor_on_trim=True)
+    ev = r["events"]
+    assert ev[0][1].startswith("trim") and ev[0][2] == 200.0
+    cash_after_trim = 500 + (-ev[0][3])
+    buys = [(e[2], e[3]) for e in ev[1:] if e[3] > 0]
+    assert [b[0] for b in buys] == [180.0, 160.0], ev
+    for _, usd in buys:
+        close(usd, cash_after_trim * 0.25, 0.011)          # each rung = 25% of the cash at the trim
+    plain = BT.simulate(d, 9, len(d) - 1, sig, LADDER, TH, buy_early=False)
+    assert not [e for e in plain["events"] if e[3] > 0]    # without moving, the ladder (from 100) never fills
+
+
+def test_backtest_hybrid_never_overspends():
+    closes = [100.0] * 10 + [100 - 0.1 * k for k in range(1, 560)]
+    d = bt_series(closes)
+    deep = [{"drop": 10, "share": 25}, {"drop": 25, "share": 25}, {"drop": 40, "share": 25}, {"drop": 55, "share": 25}]
+    r = BT.simulate(d, 9, len(d) - 1, lambda i: ([], []), deep, TH, buy_early=False, reanchor_on_trim=True, dca_share=0.5)
+    sched = [e for e in r["events"] if e[1] == "scheduled monthly buy"]
+    rungs = [e for e in r["events"] if e[1].startswith("ladder")]
+    assert len(sched) == round((len(d) - 10) / 30.4375)
+    close(sum(e[3] for e in sched), 250.0, 0.05)                # half the reserve on the schedule
+    assert [e[2] for e in rungs] == [90.0, 75.0, 60.0, 45.0]    # deep ladder, price ends at 44.1
+    assert sum(e[3] for e in r["events"]) <= 500.0 + 0.1 and r["cash"] >= -1e-9   # (+ cent rounding in the log)
+    close(r["coin_equiv"], r["coins"] + r["cash"] / d[-1]["c"], 1e-6)
+
+
 def test_backtest_benchmarks():
     d = bt_series([100.0] * 10 + [50.0] * 400)
     lump = BT.simple(d, 9, len(d) - 1, "lump")
